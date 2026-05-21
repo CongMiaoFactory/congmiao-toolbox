@@ -45,6 +45,7 @@ struct StatusResponse {
     cpu: f32,
     memory: MemoryInfo,
     foreground_window: Option<ForegroundWindowInfo>,
+    media: Option<crate::media_module::MediaInfo>,
 }
 
 #[derive(Serialize)]
@@ -174,12 +175,22 @@ async fn status_handler() -> impl IntoResponse {
         },
         process_id: window.process_id,
     });
+    
+    let media = {
+        let info = crate::media_module::get_current_media_info();
+        if info.title.is_empty() && info.artist.is_empty() {
+            None
+        } else {
+            Some(info)
+        }
+    };
 
     Json(StatusResponse {
         status: "success",
         cpu,
         memory,
         foreground_window,
+        media,
     })
 }
 

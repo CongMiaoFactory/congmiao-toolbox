@@ -34,6 +34,7 @@ btleplug = { version = "0.12.0", features = ["serde"] }
 uuid = { version = "1.22.0", features = ["v4"] }
 futures = "0.3.32"
 tauri-plugin-dialog = "2.6.0"
+windows = { version = "0.62.2", features = ["Media_Control", "Foundation", "Storage_Streams"] }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-autostart = "2.5.1"

@@ -5,6 +5,7 @@ use tauri::Manager;
 mod peek_server;
 mod usage_tracker;
 mod heartrate;
+mod media_module;
 
 struct AppState {
     sys: Mutex<System>,
@@ -136,9 +137,8 @@ pub fn run() {
 
     let builder = tauri::Builder::default()
         .setup(|app| {
-            #[cfg(desktop)]
-            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             usage_tracker::init(app.handle().clone());
+            media_module::start_media_listener(app.handle().clone());
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
@@ -161,13 +161,17 @@ pub fn run() {
             get_hr_status,
             set_hr_device_filter,
             get_hr_device_filter,
-            open_hr_overlay
+            open_hr_overlay,
+            media_module::media_play_pause,
+            media_module::media_next,
+            media_module::media_prev
         ])
         ;
 
     #[cfg(desktop)]
     let builder = builder
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_autostart::Builder::new()
                 .app_name("Congmiao Toolbox")

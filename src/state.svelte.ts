@@ -156,9 +156,24 @@ export const settingsGroups: SettingsGroup[] = [
   { title: 'Window', items: ['Single Page', 'Collapsible Sidebar', 'No Scroll'] },
 ];
 
+export type WindowData = {
+  id: string;
+  toolId: ToolId;
+  title: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  isMinimized: boolean;
+  isMaximized: boolean;
+  zIndex: number;
+};
+
 export class AppState {
   appVersion = $state('0.1.0');
   theme = $state<'dark' | 'light'>('light');
+  bgImageUrl = $state('https://images.unsplash.com/photo-1558591710-4b4a1ae0f04d?q=80&w=2574&auto=format&fit=crop');
+  bgBlur = $state(0);
   sidebarCollapsed = $state(true);
   activeNavIndex = $state(0);
   activeToolId = $state<string | null>(null);
@@ -199,6 +214,69 @@ export class AppState {
       accent: 'blue',
     },
   ]);
+
+  windows = $state<WindowData[]>([]);
+  activeWindowId = $state<string | null>(null);
+
+  openFloatingWindow(toolId: ToolId | string) {
+    let title = '工具';
+    const cmd = commands.find(c => c.id === toolId);
+    if (cmd) {
+      title = cmd.title;
+    } else {
+      // 补充缺失的 title
+      const fallbackTitles: Record<string, string> = {
+        'json': 'JSON 格式化',
+        'python': 'Python 工具集',
+        'encoder': '万能编码转换',
+        'color': '深层取色器',
+        'hash': '哈希校验',
+        'image': '图片格式工厂',
+        'timer': '生产力时钟',
+        'translator': '多语互译机',
+        'peek_pc': 'Peek 远程监视'
+      };
+      if (fallbackTitles[toolId]) title = fallbackTitles[toolId];
+    }
+    
+    const existing = this.windows.find(w => w.toolId === toolId);
+    if (existing) {
+      this.focusWindow(existing.id);
+      return;
+    }
+
+    const id = crypto.randomUUID();
+    const newWindow: WindowData = {
+      id,
+      toolId: toolId as ToolId,
+      title,
+      x: 150 + this.windows.length * 30,
+      y: 100 + this.windows.length * 30,
+      width: 900,
+      height: 650,
+      isMinimized: false,
+      isMaximized: false,
+      zIndex: this.windows.length + 10,
+    };
+    this.windows.push(newWindow);
+    this.focusWindow(id);
+  }
+
+  closeWindow(id: string) {
+    this.windows = this.windows.filter(w => w.id !== id);
+    if (this.activeWindowId === id) {
+      this.activeWindowId = null;
+    }
+  }
+
+  focusWindow(id: string) {
+    this.activeWindowId = id;
+    const maxZIndex = Math.max(0, ...this.windows.map(w => w.zIndex));
+    const win = this.windows.find(w => w.id === id);
+    if (win) {
+      win.zIndex = maxZIndex + 1;
+    }
+  }
 
   addActivity(entry: Omit<ActivityEntry, 'meta'>) {
     this.recentActivity = [{ ...entry, meta: formatMeta() }, ...this.recentActivity].slice(0, 4);

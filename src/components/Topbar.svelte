@@ -6,18 +6,8 @@
   import { check, type Update } from '@tauri-apps/plugin-updater';
   import { onDestroy, onMount } from 'svelte';
   import { appState } from '../state.svelte';
-
-  const currentTime = $derived.by(() => {
-    const d = new Date(appState.currentUnix * 1000);
-    return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-  });
-
-  const currentDate = $derived.by(() => {
-    const d = new Date(appState.currentUnix * 1000);
-    const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
-    const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-    return `${d.getFullYear()}年${months[d.getMonth()]}${d.getDate()}日 ${days[d.getDay()]}`;
-  });
+  import { invoke } from '@tauri-apps/api/core';
+  import { listen } from '@tauri-apps/api/event';
 
   let autostartEnabled = $state<boolean | null>(null);
   let autostartBusy = $state(false);
@@ -26,17 +16,11 @@
   let updateStatusText = $state('检查更新');
   let pendingUpdate = $state<Update | null>(null);
 
-  const updateIcon = $derived.by(() => {
-    if (updateBusy) return 'progress_activity';
-    if (updatePendingVersion) return 'download';
-    return 'system_update';
-  });
-
-  const updateButtonLabel = $derived.by(() => {
-    if (updateBusy) return updateStatusText;
-    if (updatePendingVersion) return `更新 ${updatePendingVersion}`;
-    return updateStatusText;
-  });
+  // 媒体状态
+  let isPlaying = $state(false);
+  let currentSong = $state('暂无播放');
+  let currentArtist = $state('未知');
+  let unlistenMedia: (() => void) | null = null;
 
   const closePendingUpdate = async () => {
     if (!pendingUpdate) return;
@@ -166,208 +150,264 @@
       if (autostartEnabled) {
         await disable();
         autostartEnabled = false;
-        appState.addActivity({
-          source: 'SYSTEM',
-          title: 'Autostart Disabled',
-          value: '已关闭开机自启',
-          accent: 'blue',
-        });
       } else {
         await enable();
         autostartEnabled = true;
-        appState.addActivity({
-          source: 'SYSTEM',
-          title: 'Autostart Enabled',
-          value: '已开启开机自启',
-          accent: 'blue',
-        });
       }
     } catch (error) {
       console.error(error);
-      await message('切换开机自启失败，请稍后再试。', {
-        title: '开机自启',
-        kind: 'error',
-      });
     } finally {
       autostartBusy = false;
     }
   };
 
-  // 修复 2：定义计时器变量
-  let interval: ReturnType<typeof setInterval>;
-
   onMount(async () => {
     await refreshDesktopState();
     await syncUpdate(false);
     
-    // 修复 3：每秒更新一次全局状态中的时间戳
-    interval = setInterval(() => {
-      appState.currentUnix = Math.floor(Date.now() / 1000);
-    }, 1000);
+    unlistenMedia = await listen<{title: string, artist: string, is_playing: boolean}>('media-update', (event) => {
+      const payload = event.payload;
+      currentSong = payload.title || '暂无播放';
+      currentArtist = payload.artist || '未知';
+      isPlaying = payload.is_playing;
+    });
   });
 
   onDestroy(() => {
     void closePendingUpdate();
-    if (interval) clearInterval(interval); // 销毁组件时清除计时器
+    if (unlistenMedia) unlistenMedia();
   });
+
+  async function mediaPrev() { await invoke('media_prev'); }
+  async function mediaToggle() { await invoke('media_play_pause'); }
+  async function mediaNext() { await invoke('media_next'); }
 </script>
 
-<header class="topbar">
-  <div class="topbar-title">
-    <p class="eyebrow">{currentDate}</p>
-    <h2>{currentTime}</h2>
+<header class="mac-menubar">
+  <div class="menubar-left">
+    <div class="logo-item" title="Congmiao Toolbox">
+      <img src="/tauri.svg" alt="Logo" class="mini-logo" />
+    </div>
+    <div class="menu-item bold">Congmiao</div>
+    <button class="menu-item menu-btn" onclick={() => appState.activeNavIndex = 1}>应用</button>
+    <button class="menu-item menu-btn" onclick={() => appState.activeNavIndex = 2}>统计</button>
+    <button class="menu-item menu-btn" onclick={() => appState.commandOpen = true}>搜索</button>
   </div>
 
-  <div class="topbar-actions">
-    <button
-      class="status-chip"
-      class:active={autostartEnabled === true}
+  <!-- 中间的媒体控制区 -->
+  <div class="media-mini-player">
+    <button class="media-btn" onclick={mediaPrev} aria-label="上一首"><span class="material-symbols-rounded">skip_previous</span></button>
+    <button class="media-btn" onclick={mediaToggle} aria-label={isPlaying ? '暂停' : '播放'}><span class="material-symbols-rounded">{isPlaying ? 'pause' : 'play_arrow'}</span></button>
+    <button class="media-btn" onclick={mediaNext} aria-label="下一首"><span class="material-symbols-rounded">skip_next</span></button>
+    <div class="media-info" title="{currentSong} - {currentArtist}">
+      <span class="media-title">{currentSong}</span>
+      <span class="media-artist">- {currentArtist}</span>
+    </div>
+  </div>
+
+  <div class="menubar-right">
+    {#if updateBusy}
+      <div class="status-icon" title={updateStatusText}>
+        <span class="material-symbols-rounded rotating">sync</span>
+      </div>
+    {:else if updatePendingVersion}
+      <button class="status-icon highlight" onclick={handleUpdateClick} title="有新版本 v{updatePendingVersion}">
+        <span class="material-symbols-rounded">system_update_alt</span>
+      </button>
+    {/if}
+
+    <button 
+      class="status-icon {autostartEnabled ? 'active' : ''}" 
+      onclick={toggleAutostart} 
+      title={autostartEnabled ? '开机自启已开启' : '开机自启未开启'}
       disabled={autostartBusy}
-      title={autostartEnabled ? '关闭开机自启' : '开启开机自启'}
-      aria-label={autostartEnabled ? '关闭开机自启' : '开启开机自启'}
-      onclick={toggleAutostart}
     >
       <span class="material-symbols-rounded">rocket_launch</span>
-      <span>{autostartEnabled ? '已启用自启' : '开机自启'}</span>
     </button>
 
-    <button
-      class="status-chip"
-      class:highlight={updatePendingVersion !== null}
-      disabled={updateBusy}
-      title={updatePendingVersion ? `安装 v${updatePendingVersion}` : '检查更新'}
-      aria-label={updatePendingVersion ? `安装 v${updatePendingVersion}` : '检查更新'}
-      onclick={handleUpdateClick}
-    >
-      <span class="material-symbols-rounded">{updateIcon}</span>
-      <span>{updateButtonLabel}</span>
-    </button>
+    <div class="status-icon text-only" title="当前版本">v{appState.appVersion}</div>
 
-    <div class="version-chip">v{appState.appVersion}</div>
-
-    <button
-      class="icon-btn"
-      aria-label="切换主题"
-      onclick={() => appState.toggleTheme()}
-    >
-      <span class="material-symbols-rounded">
-        {appState.theme === 'dark' ? 'light_mode' : 'dark_mode'}
-      </span>
+    <button class="status-icon" onclick={() => appState.toggleTheme()} title="切换暗色/亮色模式">
+      <span class="material-symbols-rounded">{appState.theme === 'dark' ? 'light_mode' : 'dark_mode'}</span>
     </button>
   </div>
 </header>
 
 <style>
-  /* 样式保持不变 */
-  .topbar {
+  .mac-menubar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
-    min-height: 80px;
-    padding: 0 32px;
-    background-color: var(--bg-app);
-    border-bottom: 1px solid var(--border-subtle);
+    height: 28px;
+    padding: 0 16px;
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    color: var(--text-primary, #333);
+    font-size: 13px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    user-select: none;
     flex-shrink: 0;
+    position: relative;
   }
 
-  .topbar-title {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+  :global([data-theme="dark"]) .mac-menubar {
+    background: rgba(0, 0, 0, 0.4);
+    color: var(--text-primary, #eee);
   }
 
-  .eyebrow {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--accent-blue);
-  }
-
-  h2 {
-    font-size: 24px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    color: var(--text-primary);
-  }
-
-  .topbar-actions {
+  .menubar-left, .menubar-right {
     display: flex;
     align-items: center;
+    height: 100%;
+  }
+
+  .menubar-left {
     gap: 12px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
   }
 
-  .status-chip,
-  .version-chip {
-    display: inline-flex;
+  .menubar-right {
+    gap: 16px;
+  }
+
+  .logo-item {
+    display: flex;
     align-items: center;
-    gap: 8px;
-    min-height: 36px;
-    padding: 0 14px;
-    border-radius: 999px;
-    border: 1px solid var(--border-subtle);
-    background-color: var(--bg-panel0);
-    font-size: 12px;
+    justify-content: center;
+    height: 100%;
+    cursor: pointer;
+  }
+
+  .mini-logo {
+    width: 14px;
+    height: 14px;
+    object-fit: contain;
+  }
+
+  .menu-item {
+    cursor: pointer;
+    font-weight: 500;
+    transition: color 0.1s;
+    height: 100%;
+    display: flex;
+    align-items: center;
+  }
+
+  .menu-item.bold {
     font-weight: 700;
-    color: var(--text-secondary);
-    transition: all var(--transition-fast);
   }
 
-  .status-chip:hover {
-    background-color: var(--bg-panel-hover);
-    color: var(--text-primary);
-    border-color: var(--border-focus);
+  .menu-item:hover {
+    color: var(--accent-blue, #0A84FF);
   }
 
-  .status-chip.active {
-    color: #1b8f4d;
-    border-color: rgba(52, 199, 89, 0.35);
-    background-color: rgba(52, 199, 89, 0.12);
+  .status-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0;
+    height: 100%;
+    font-size: 13px;
+    font-weight: 500;
   }
 
-  .status-chip.highlight {
-    color: #0A84FF;
-    border-color: rgba(10, 132, 255, 0.35);
-    background-color: rgba(10, 132, 255, 0.12);
+  .status-icon .material-symbols-rounded {
+    font-size: 16px;
   }
 
-  .status-chip .material-symbols-rounded {
-    font-size: 18px;
+  .status-icon.text-only {
+    cursor: default;
+    color: var(--text-secondary, #666);
   }
 
-  .version-chip {
-    color: var(--text-caption);
+  :global([data-theme="dark"]) .status-icon.text-only {
+    color: var(--text-secondary, #aaa);
   }
 
-  .icon-btn {
-    display: grid;
-    place-items: center;
-    width: 36px;
-    height: 36px;
-    border-radius: var(--radius-full);
-    background-color: var(--bg-panel0);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-subtle);
-    transition: all var(--transition-fast);
+  .status-icon:not(.text-only):hover {
+    color: var(--accent-blue, #0A84FF);
   }
 
-  .icon-btn:hover {
-    background-color: var(--bg-panel-hover);
-    color: var(--text-primary);
-    border-color: var(--border-focus);
+  .status-icon.active {
+    color: #34C759;
   }
 
-  @media (max-width: 980px) {
-    .topbar {
-      align-items: flex-start;
-      padding: 20px 24px;
-    }
+  .status-icon.highlight {
+    color: #FF9500;
+  }
 
-    .topbar-actions {
-      max-width: 55%;
-    }
+  .rotating {
+    animation: rotate 2s linear infinite;
+  }
+
+  @keyframes rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .media-mini-player {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    height: 100%;
+  }
+
+  .media-btn {
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+  }
+  .media-btn:hover {
+    background-color: var(--bg-panel-hover, rgba(0,0,0,0.05));
+    color: var(--accent-blue, #0A84FF);
+  }
+  :global([data-theme="dark"]) .media-btn:hover { background-color: rgba(255,255,255,0.1); }
+  .media-btn .material-symbols-rounded { font-size: 16px; }
+
+  .media-info {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    margin-left: 6px;
+    max-width: 200px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .media-title {
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  .media-artist {
+    font-size: 12px;
+    color: var(--text-secondary, #666);
+  }
+  :global([data-theme="dark"]) .media-artist { color: var(--text-secondary, #aaa); }
+
+  .menu-btn {
+    background: transparent;
+    border: none;
+    color: inherit;
+    font-size: inherit;
+    font-family: inherit;
+    padding: 0;
   }
 </style>

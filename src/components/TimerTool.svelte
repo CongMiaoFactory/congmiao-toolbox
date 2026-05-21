@@ -48,8 +48,8 @@
 
   // ---------- COUNTDOWN ----------
   let cdInputMins = $state(5);
-  let cdTime = $state(cdInputMins * 60000);
-  let cdTotal = $state(cdTime);
+  let cdTime = $state(5 * 60000);
+  let cdTotal = $state(5 * 60000);
   let cdRunning = $state(false);
   let cdInterval: number;
 

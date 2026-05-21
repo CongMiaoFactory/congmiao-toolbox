@@ -150,7 +150,6 @@
 
   .icon-wrap { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; }
   .icon-wrap.red { background-color: rgba(255, 59, 48, 0.15); color: #FF3B30; }
-  .icon-wrap .material-symbols-rounded { font-size: 18px; }
 
   h4 { font-size: 13px; font-weight: 600; color: var(--text-primary); margin: 0; }
 

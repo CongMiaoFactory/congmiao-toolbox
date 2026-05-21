@@ -22,6 +22,7 @@
     cpu: number;
     memory: MemoryInfo;
     foreground_window: ForegroundWindowInfo | null;
+    media: { title: string; artist: string; is_playing: boolean } | null;
   }
 
   const emptyStatus: PeekStatusResponse = {
@@ -33,7 +34,8 @@
       available: 0,
       used_percent: 0
     },
-    foreground_window: null
+    foreground_window: null,
+    media: null
   };
 
   let isRunning = $state(false);
@@ -236,6 +238,23 @@
           </span>
         {:else}
           <span class="window-empty">当前暂时获取不到前台窗口信息</span>
+        {/if}
+      </div>
+
+      <div class="window-card media-card">
+        <span class="label">当前媒体</span>
+        {#if peekStatus.media}
+          <div class="media-header">
+            <span class="material-symbols-rounded icon-media">
+              {peekStatus.media.is_playing ? 'play_circle' : 'pause_circle'}
+            </span>
+            <strong class="window-title">{peekStatus.media.title || '未知媒体'}</strong>
+          </div>
+          <span class="window-meta">
+            {peekStatus.media.artist || '未知艺术家'}
+          </span>
+        {:else}
+          <span class="window-empty">当前无媒体播放</span>
         {/if}
       </div>
     </div>
@@ -539,6 +558,17 @@
     font-size: 13px;
     color: var(--text-secondary);
     line-height: 1.6;
+  }
+
+  .media-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  
+  .icon-media {
+    font-size: 18px;
+    color: var(--text-secondary);
   }
 
   .tip-box {
