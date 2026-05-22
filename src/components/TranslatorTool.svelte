@@ -21,17 +21,17 @@
     
     isTranslating = true;
     try {
-      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(sourceText)}&langpair=${sourceLang}|${targetLang}`;
+      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(sourceText)}`;
       const res = await fetch(url);
       const data = await res.json();
       
-      if (data.responseStatus !== 200) {
-        errorMsg = '翻译服务受限: ' + (data.responseDetails || 'API 请求过多');
+      if (data && data[0]) {
+        translatedText = data[0].map((item: any) => item[0]).join('');
       } else {
-        translatedText = data.responseData.translatedText;
+        errorMsg = '翻译服务异常';
       }
     } catch (e) {
-      errorMsg = '网络错误，请检查网络连接是否通畅';
+      errorMsg = '网络错误，请检查网络连接是否通畅 (可能需要代理)';
     }
     isTranslating = false;
   };
@@ -151,7 +151,7 @@
 
   <div class="footer-note">
     <span class="material-symbols-rounded">info</span>
-    <p>该翻译服务使用 MyMemory 公共翻译 API 构建，基于互联网连接。免费额度为 5000字/天。</p>
+    <p>该翻译服务使用 Google Translate 构建，基于互联网连接 (可能需要代理网络)。</p>
   </div>
 </div>
 
