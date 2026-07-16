@@ -15,6 +15,7 @@
     title: string;
     process_name: string;
     process_id: number;
+    is_masked: boolean;
   }
 
   interface PeekStatusResponse {
@@ -23,6 +24,12 @@
     memory: MemoryInfo;
     foreground_window: ForegroundWindowInfo | null;
     media: { title: string; artist: string; is_playing: boolean } | null;
+  }
+
+  interface DetectedApplication {
+    title: string;
+    process_name: string;
+    process_id: number;
   }
 
   const emptyStatus: PeekStatusResponse = {
@@ -40,11 +47,25 @@
 
   let isRunning = $state(false);
   let isPrivacyEnabled = $state(false);
+  let isGlobalBlurEnabled = $state(true);
   let privacyImagePath = $state<string | null>(null);
   let isToggling = $state(false);
   let serverUrl = $state('http://127.0.0.1:3000');
   let peekStatus = $state<PeekStatusResponse>(emptyStatus);
   let statusTimer: ReturnType<typeof setInterval> | undefined;
+  let sensitiveRules = $state<string[]>([]);
+  let sensitiveRuleText = $state('');
+  let isSavingRules = $state(false);
+  let ruleMessage = $state('');
+  let detectedApplications = $state<DetectedApplication[]>([]);
+  let isDetectingApplications = $state(false);
+  let applicationSearch = $state('');
+
+  const filteredApplications = $derived(detectedApplications.filter((application) => {
+    const search = applicationSearch.trim().toLowerCase();
+    return !search || application.title.toLowerCase().includes(search)
+      || application.process_name.toLowerCase().includes(search);
+  }));
 
   const screenshotUrl = $derived(`${serverUrl}/api/screenshot`);
   const statusUrl = $derived(`${serverUrl}/api/status`);
@@ -62,6 +83,7 @@
   const checkStatus = async () => {
     isRunning = await invoke<boolean>('get_peek_status');
     isPrivacyEnabled = await invoke<boolean>('get_privacy_status');
+    isGlobalBlurEnabled = await invoke<boolean>('get_global_blur_status');
 
     if (!isRunning) {
       peekStatus = emptyStatus;
@@ -82,6 +104,8 @@
 
   onMount(async () => {
     await refreshServerUrl();
+    sensitiveRules = await invoke<string[]>('get_sensitive_app_rules');
+    sensitiveRuleText = sensitiveRules.join('\n');
     await checkStatus();
     statusTimer = setInterval(checkStatus, 3000);
   });
@@ -115,6 +139,10 @@
     isPrivacyEnabled = await invoke<boolean>('toggle_privacy');
   };
 
+  const handleToggleGlobalBlur = async () => {
+    isGlobalBlurEnabled = await invoke<boolean>('toggle_global_blur');
+  };
+
   const handleSelectImage = async () => {
     const selected = await open({
       multiple: false,
@@ -135,6 +163,64 @@
   const handleCopyUrl = async (value: string) => {
     await copyText(value);
   };
+
+  const saveSensitiveRules = async () => {
+    if (isSavingRules) return;
+    isSavingRules = true;
+    ruleMessage = '';
+    try {
+      const rules = sensitiveRuleText
+        .split(/\r?\n|,|，/)
+        .map((rule) => rule.trim())
+        .filter(Boolean);
+      sensitiveRules = await invoke<string[]>('set_sensitive_app_rules', { rules });
+      sensitiveRuleText = sensitiveRules.join('\n');
+      ruleMessage = sensitiveRules.length ? `已保存 ${sensitiveRules.length} 条规则` : '已清空程序模糊规则';
+      await checkStatus();
+    } catch (error) {
+      console.error(error);
+      ruleMessage = '保存失败';
+    } finally {
+      isSavingRules = false;
+    }
+  };
+
+  const detectApplications = async () => {
+    if (isDetectingApplications) return;
+    isDetectingApplications = true;
+    ruleMessage = '';
+    try {
+      detectedApplications = await invoke<DetectedApplication[]>('detect_peek_applications');
+      ruleMessage = detectedApplications.length
+        ? `检测到 ${detectedApplications.length} 个可见程序窗口，请选择要模糊的程序`
+        : '没有检测到可添加的程序窗口';
+    } catch (error) {
+      console.error(error);
+      ruleMessage = '程序检测失败';
+    } finally {
+      isDetectingApplications = false;
+    }
+  };
+
+  const addDetectedApplication = async (application: DetectedApplication) => {
+    const rules = sensitiveRuleText.split(/\r?\n/).map((rule) => rule.trim()).filter(Boolean);
+    for (const candidate of [application.process_name, application.title]) {
+      const rule = candidate.trim();
+      if (rule && !rules.some((current) => current.toLowerCase() === rule.toLowerCase())) {
+        rules.push(rule);
+      }
+    }
+
+    try {
+      sensitiveRules = await invoke<string[]>('set_sensitive_app_rules', { rules });
+      sensitiveRuleText = sensitiveRules.join('\n');
+      ruleMessage = `已添加并保存：${application.process_name || application.title}`;
+      await checkStatus();
+    } catch (error) {
+      console.error(error);
+      ruleMessage = '添加程序失败';
+    }
+  };
 </script>
 
 <div class="tool-content">
@@ -144,7 +230,7 @@
     </div>
     <div class="title-meta">
       <h3>Peek PC 遥控监控</h3>
-      <p>现在默认输出模糊化截图，并同步前台窗口状态。{isRunning ? '服务已启动' : '服务未运行'}</p>
+      <p>支持清晰截图、全局模糊和指定程序局部模糊。{isRunning ? '服务已启动' : '服务未运行'}</p>
     </div>
   </div>
 
@@ -176,14 +262,27 @@
       </div>
 
       <div class="setting-row">
-        <span>启用隐私遮罩</span>
+        <div class="setting-copy">
+          <span>常规截图全局模糊</span>
+          <small>关闭后仅对命中规则的程序窗口额外模糊</small>
+        </div>
+        <button class="switch" class:on={isGlobalBlurEnabled} onclick={handleToggleGlobalBlur} title="切换常规全局模糊" aria-label="切换常规全局模糊">
+          <div class="knob"></div>
+        </button>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-copy">
+          <span>启用隐私遮罩</span>
+          <small>强制整屏重度模糊或显示替代图片</small>
+        </div>
         <button class="switch" class:on={isPrivacyEnabled} onclick={handleTogglePrivacy} title="切换隐私遮罩" aria-label="切换隐私遮罩">
           <div class="knob"></div>
         </button>
       </div>
 
       <div class="privacy-note">
-        常规截图已经默认模糊；开启隐私模式后会进一步加重模糊，或直接返回你设置的替代图片。
+        指定程序规则始终优先应用。隐私遮罩开启时，无论常规全局模糊开关如何，都会进一步模糊整张截图或返回替代图片。
       </div>
 
       <div class="image-selector">
@@ -202,6 +301,64 @@
           </button>
         {/if}
       </div>
+    </div>
+
+    <div class="card program-privacy-card">
+      <div class="card-title">
+        <span class="material-symbols-rounded">blur_on</span>
+        指定程序模糊
+        <span class="beta-badge">试用</span>
+      </div>
+
+      <p class="program-note">
+        当前版本会匹配前台程序名、可执行文件名或窗口标题，并对该窗口区域进行额外强模糊。
+      </p>
+
+      <label class="rule-editor">
+        <span class="label">匹配规则（每行一个）</span>
+        <textarea bind:value={sensitiveRuleText} placeholder={'QQ\nAyuGram Desktop\nfirefox.exe'}></textarea>
+      </label>
+
+      <div class="rule-actions">
+        <button class="outline-btn compact" onclick={detectApplications} disabled={isDetectingApplications}>
+          <span class="material-symbols-rounded">radar</span>
+          {isDetectingApplications ? '检测中…' : '检测运行程序'}
+        </button>
+        <button class="save-rule-btn" onclick={saveSensitiveRules} disabled={isSavingRules}>
+          {isSavingRules ? '保存中…' : '保存规则'}
+        </button>
+      </div>
+
+      {#if detectedApplications.length}
+        <div class="detected-applications">
+          <div class="detected-toolbar">
+            <strong>选择程序</strong>
+            <input bind:value={applicationSearch} placeholder="搜索 QQ、AyuGram…" />
+          </div>
+          <div class="detected-list">
+            {#each filteredApplications as application (`${application.process_id}-${application.title}`)}
+              <div class="detected-item">
+                <div class="detected-copy">
+                  <strong>{application.process_name || '无法读取进程名'}</strong>
+                  <span>{application.title}</span>
+                  <small>PID {application.process_id}</small>
+                </div>
+                <button onclick={() => addDetectedApplication(application)}>添加</button>
+              </div>
+            {:else}
+              <div class="detected-empty">没有匹配的程序</div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      {#if ruleMessage}<div class="rule-message">{ruleMessage}</div>{/if}
+      {#if peekStatus.foreground_window?.is_masked}
+        <div class="mask-active">
+          <span class="material-symbols-rounded">shield_lock</span>
+          当前前台窗口已应用额外模糊
+        </div>
+      {/if}
     </div>
 
     <div class="card monitor-card">
@@ -235,6 +392,7 @@
           <strong class="window-title">{peekStatus.foreground_window.title || '未命名窗口'}</strong>
           <span class="window-meta">
             {peekStatus.foreground_window.process_name || '未知进程'} · PID {peekStatus.foreground_window.process_id}
+            {peekStatus.foreground_window.is_masked ? ' · 已额外模糊' : ''}
           </span>
         {:else}
           <span class="window-empty">当前暂时获取不到前台窗口信息</span>
@@ -289,7 +447,7 @@
 
   <div class="tip-box">
     <span class="material-symbols-rounded">info</span>
-    <p>截图接口现在默认会先缩放再模糊，并带有短时缓存，适合被局域网设备连续轮询。</p>
+    <p>关闭常规全局模糊后，截图保持清晰，仅对命中规则的前台程序窗口进行额外模糊。</p>
   </div>
 </div>
 
@@ -428,6 +586,23 @@
     color: var(--text-secondary);
   }
 
+  .setting-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+    padding-right: 12px;
+  }
+
+  .setting-copy small {
+    color: var(--text-caption);
+    font-size: 10px;
+    font-weight: 400;
+    line-height: 1.4;
+  }
+
+  .setting-row .switch { flex: 0 0 auto; }
+
   .switch {
     position: relative;
     width: 44px;
@@ -463,6 +638,173 @@
     border-radius: 14px;
     padding: 12px 14px;
   }
+
+  .program-note {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .beta-badge {
+    margin-left: auto;
+    padding: 3px 7px;
+    border-radius: 999px;
+    color: #AF52DE;
+    background: rgba(175, 82, 222, 0.1);
+    font-size: 10px;
+  }
+
+  .rule-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .rule-editor textarea {
+    box-sizing: border-box;
+    width: 100%;
+    height: 112px;
+    padding: 11px 12px;
+    resize: vertical;
+    outline: none;
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    color: var(--text-primary);
+    background: var(--bg-panel1);
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+  }
+
+  .rule-editor textarea:focus {
+    border-color: #AF52DE;
+    box-shadow: 0 0 0 3px rgba(175, 82, 222, 0.08);
+  }
+
+  .rule-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .outline-btn.compact {
+    flex: 1;
+    border-style: solid;
+  }
+
+  .outline-btn:disabled,
+  .save-rule-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .save-rule-btn {
+    padding: 10px 14px;
+    border: 0;
+    border-radius: 12px;
+    color: white;
+    background: #AF52DE;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .detected-applications {
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    background: var(--bg-panel1);
+  }
+
+  .detected-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 11px;
+  }
+
+  .detected-toolbar input {
+    min-width: 0;
+    flex: 1;
+    padding: 7px 9px;
+    outline: none;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    color: var(--text-primary);
+    background: var(--bg-panel2);
+    font-size: 11px;
+  }
+
+  .detected-list {
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  .detected-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .detected-item:last-child { border-bottom: 0; }
+
+  .detected-copy {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .detected-copy strong,
+  .detected-copy span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .detected-copy strong { font-size: 12px; }
+  .detected-copy span { color: var(--text-secondary); font-size: 10px; }
+  .detected-copy small { color: var(--text-caption); font-size: 9px; }
+
+  .detected-item button {
+    padding: 7px 11px;
+    border: 0;
+    border-radius: 9px;
+    color: #AF52DE;
+    background: rgba(175, 82, 222, 0.12);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .detected-empty {
+    padding: 18px;
+    color: var(--text-caption);
+    text-align: center;
+    font-size: 11px;
+  }
+
+  .rule-message {
+    color: var(--text-caption);
+    font-size: 11px;
+  }
+
+  .mask-active {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 11px;
+    border-radius: 11px;
+    color: #248A55;
+    background: rgba(52, 199, 89, 0.1);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .mask-active span { font-size: 17px; }
 
   .image-selector {
     display: flex;

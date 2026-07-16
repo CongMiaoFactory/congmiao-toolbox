@@ -1,6 +1,6 @@
 [package]
 name = "congmiao-toolbox"
-version = "0.2.3"
+version = "0.2.4"
 description = "A personal desktop toolbox built with Tauri and Svelte."
 authors = ["tenonsuzu"]
 edition = "2021"
@@ -36,7 +36,14 @@ futures = "0.3.32"
 tauri-plugin-dialog = "2.6.0"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62.2", features = ["Media_Control", "Foundation", "Storage_Streams"] }
+windows = { version = "0.62.2", features = [
+    "Media_Control",
+    "Foundation",
+    "Storage_Streams",
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Threading",
+] }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-autostart = "2.5.1"

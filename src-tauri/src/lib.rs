@@ -102,6 +102,20 @@ fn get_privacy_status() -> bool {
 }
 
 #[tauri::command]
+fn toggle_global_blur() -> bool {
+    let current = peek_server::GLOBAL_BLUR_ENABLED.load(std::sync::atomic::Ordering::SeqCst);
+    let enabled = !current;
+    peek_server::GLOBAL_BLUR_ENABLED.store(enabled, std::sync::atomic::Ordering::SeqCst);
+    peek_server::clear_screenshot_cache();
+    enabled
+}
+
+#[tauri::command]
+fn get_global_blur_status() -> bool {
+    peek_server::GLOBAL_BLUR_ENABLED.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+#[tauri::command]
 fn get_peek_server_url() -> String {
     peek_server_url()
 }
@@ -113,6 +127,21 @@ fn set_peek_privacy_image(path: Option<String>) {
         .lock()
         .unwrap();
     *p = path;
+}
+
+#[tauri::command]
+fn get_sensitive_app_rules() -> Vec<String> {
+    peek_server::get_sensitive_app_rules()
+}
+
+#[tauri::command]
+fn detect_peek_applications() -> Vec<peek_server::DetectedApplication> {
+    peek_server::detect_running_apps()
+}
+
+#[tauri::command]
+fn set_sensitive_app_rules(rules: Vec<String>) -> Result<Vec<String>, String> {
+    peek_server::set_sensitive_app_rules(rules)
 }
 
 #[tauri::command]
@@ -175,6 +204,7 @@ pub fn run() {
 
     let builder = tauri::Builder::default()
         .setup(|app| {
+            peek_server::init(app.handle());
             usage_tracker::init(app.handle().clone());
             media_module::start_media_listener(app.handle().clone());
             Ok(())
@@ -191,8 +221,13 @@ pub fn run() {
             get_peek_status,
             toggle_privacy,
             get_privacy_status,
+            toggle_global_blur,
+            get_global_blur_status,
             get_peek_server_url,
             set_peek_privacy_image,
+            get_sensitive_app_rules,
+            detect_peek_applications,
+            set_sensitive_app_rules,
             usage_tracker::get_app_usage,
             start_hr_scan,
             stop_hr_scan,
