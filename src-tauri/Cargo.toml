@@ -1,6 +1,6 @@
 [package]
 name = "congmiao-toolbox"
-version = "0.2.0"
+version = "0.2.2"
 description = "A personal desktop toolbox built with Tauri and Svelte."
 authors = ["tenonsuzu"]
 edition = "2021"
@@ -34,6 +34,8 @@ btleplug = { version = "0.12.0", features = ["serde"] }
 uuid = { version = "1.22.0", features = ["v4"] }
 futures = "0.3.32"
 tauri-plugin-dialog = "2.6.0"
+
+[target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", features = ["Media_Control", "Foundation", "Storage_Streams"] }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]

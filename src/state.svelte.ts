@@ -234,7 +234,8 @@ export class AppState {
         'image': '图片格式工厂',
         'timer': '生产力时钟',
         'translator': '多语互译机',
-        'peek_pc': 'Peek 远程监视'
+        'peek_pc': 'Peek 远程监视',
+        'lucky-wheel': '幸运大转盘'
       };
       if (fallbackTitles[toolId]) title = fallbackTitles[toolId];
     }

@@ -2,10 +2,45 @@ use std::sync::Mutex;
 use sysinfo::System;
 use tauri::Manager;
 
+mod heartrate;
+#[cfg(target_os = "windows")]
+mod media_module;
 mod peek_server;
 mod usage_tracker;
-mod heartrate;
-mod media_module;
+
+#[cfg(not(target_os = "windows"))]
+mod media_module {
+    use serde::Serialize;
+    use tauri::AppHandle;
+
+    #[derive(Clone, Serialize, Default, Debug)]
+    pub struct MediaInfo {
+        pub title: String,
+        pub artist: String,
+        pub is_playing: bool,
+    }
+
+    pub fn get_current_media_info() -> MediaInfo {
+        MediaInfo::default()
+    }
+
+    pub fn start_media_listener(_: AppHandle) {}
+
+    #[tauri::command]
+    pub async fn media_play_pause() -> Result<(), String> {
+        Ok(())
+    }
+
+    #[tauri::command]
+    pub async fn media_next() -> Result<(), String> {
+        Ok(())
+    }
+
+    #[tauri::command]
+    pub async fn media_prev() -> Result<(), String> {
+        Ok(())
+    }
+}
 
 struct AppState {
     sys: Mutex<System>,
@@ -39,7 +74,7 @@ fn get_system_stats(state: tauri::State<'_, AppState>) -> SystemStats {
 
 #[tauri::command]
 async fn start_peek_server() -> Result<String, String> {
-    peek_server::run_server().await;
+    peek_server::run_server().await?;
     Ok(peek_server_url())
 }
 
@@ -73,7 +108,10 @@ fn get_peek_server_url() -> String {
 
 #[tauri::command]
 fn set_peek_privacy_image(path: Option<String>) {
-    let mut p = peek_server::PRIVACY_IMAGE_PATH.get_or_init(|| std::sync::Mutex::new(None)).lock().unwrap();
+    let mut p = peek_server::PRIVACY_IMAGE_PATH
+        .get_or_init(|| std::sync::Mutex::new(None))
+        .lock()
+        .unwrap();
     *p = path;
 }
 
@@ -165,8 +203,7 @@ pub fn run() {
             media_module::media_play_pause,
             media_module::media_next,
             media_module::media_prev
-        ])
-        ;
+        ]);
 
     #[cfg(desktop)]
     let builder = builder

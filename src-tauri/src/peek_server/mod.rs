@@ -1,5 +1,8 @@
 use active_win_pos_rs::get_active_window;
-use axum::{body::Body, http::StatusCode, response::IntoResponse, response::Response, routing::get, Json, Router};
+use axum::{
+    body::Body, http::StatusCode, response::IntoResponse, response::Response, routing::get, Json,
+    Router,
+};
 use screenshots::Screen;
 use serde::Serialize;
 use std::io::Cursor;
@@ -97,9 +100,12 @@ fn get_status_system() -> &'static Mutex<System> {
     })
 }
 
-pub async fn run_server() {
-    if IS_RUNNING.load(Ordering::SeqCst) {
-        return;
+pub async fn run_server() -> Result<(), String> {
+    if IS_RUNNING
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Ok(());
     }
 
     let cors = CorsLayer::new()
@@ -113,31 +119,40 @@ pub async fn run_server() {
         .route("/api/privacy", get(get_privacy).post(set_privacy))
         .layer(cors);
 
+    let listener = match tokio::net::TcpListener::bind("0.0.0.0:3000").await {
+        Ok(listener) => listener,
+        Err(error) => {
+            IS_RUNNING.store(false, Ordering::SeqCst);
+            return Err(format!(
+                "Failed to bind Peek PC server on port 3000: {error}"
+            ));
+        }
+    };
+
     let (tx, rx) = oneshot::channel();
     *get_tx().lock().unwrap() = Some(tx);
 
-    IS_RUNNING.store(true, Ordering::SeqCst);
-
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-
     tokio::spawn(async move {
-        axum::serve(listener, app)
+        if let Err(error) = axum::serve(listener, app)
             .with_graceful_shutdown(async move {
                 rx.await.ok();
             })
             .await
-            .unwrap();
+        {
+            eprintln!("Peek PC server error: {error}");
+        }
 
         IS_RUNNING.store(false, Ordering::SeqCst);
         *get_tx().lock().unwrap() = None;
     });
+
+    Ok(())
 }
 
 pub fn stop_server() {
     if let Some(tx) = get_tx().lock().unwrap().take() {
         let _ = tx.send(());
     }
-    IS_RUNNING.store(false, Ordering::SeqCst);
 }
 
 async fn status_handler() -> impl IntoResponse {
@@ -149,7 +164,11 @@ async fn status_handler() -> impl IntoResponse {
         let total = sys.total_memory() as f64 / 1024.0 / 1024.0;
         let used = sys.used_memory() as f64 / 1024.0 / 1024.0;
         let available = sys.available_memory() as f64 / 1024.0 / 1024.0;
-        let used_percent = if total > 0.0 { used / total * 100.0 } else { 0.0 };
+        let used_percent = if total > 0.0 {
+            used / total * 100.0
+        } else {
+            0.0
+        };
 
         (
             sys.global_cpu_usage(),
@@ -175,7 +194,7 @@ async fn status_handler() -> impl IntoResponse {
         },
         process_id: window.process_id,
     });
-    
+
     let media = {
         let info = crate::media_module::get_current_media_info();
         if info.title.is_empty() && info.artist.is_empty() {
@@ -202,7 +221,10 @@ async fn screenshot_handler() -> impl IntoResponse {
         if is_privacy {
             if let Ok(img) = image::open(path) {
                 let mut bytes: Vec<u8> = Vec::new();
-                if img.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Jpeg).is_ok() {
+                if img
+                    .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Jpeg)
+                    .is_ok()
+                {
                     return jpeg_response(bytes);
                 }
             }

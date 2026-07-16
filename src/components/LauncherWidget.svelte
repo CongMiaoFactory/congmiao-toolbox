@@ -1,14 +1,20 @@
 <script lang="ts">
-  import { appState, commands, type ToolId } from '../state.svelte';
+  import { appState, type ToolId } from '../state.svelte';
   
-  // Choose a few tools to show on the launcher
-  const launcherTools = commands.filter(c => 
-    ['timestamp', 'json', 'color', 'translator', 'timer'].includes(c.id)
-  );
+  const launcherTools: Array<{
+    id: ToolId;
+    title: string;
+    icon: string;
+    accent: 'teal' | 'blue';
+  }> = [
+    { id: 'timestamp', title: '生产力时钟', icon: 'timer', accent: 'teal' },
+    { id: 'json-format', title: 'JSON 格式化', icon: 'data_object', accent: 'teal' },
+    { id: 'color', title: '深层取色器', icon: 'colorize', accent: 'blue' },
+    { id: 'translator', title: '多语互译机', icon: 'translate', accent: 'teal' },
+    { id: 'image', title: '图片格式工厂', icon: 'imagesmode', accent: 'blue' },
+  ];
 
   function launchTool(id: ToolId) {
-    // For now, let's just open it in the floating window system we'll build
-    // Or dispatch an event
     appState.openFloatingWindow(id);
   }
 </script>

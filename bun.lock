@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "tauri-app",
+      "name": "congmiao-toolbox",
       "dependencies": {
         "@astral-sh/ruff-wasm-web": "^0.15.7",
         "@tauri-apps/api": "^2.10.1",

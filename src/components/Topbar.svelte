@@ -15,6 +15,7 @@
   let updatePendingVersion = $state<string | null>(null);
   let updateStatusText = $state('检查更新');
   let pendingUpdate = $state<Update | null>(null);
+  let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 
   // 媒体状态
   let isPlaying = $state(false);
@@ -33,8 +34,17 @@
   };
 
   const refreshDesktopState = async () => {
-    appState.appVersion = await getVersion();
-    autostartEnabled = await isEnabled();
+    try {
+      appState.appVersion = await getVersion();
+    } catch (error) {
+      console.error('Failed to read application version', error);
+    }
+    try {
+      autostartEnabled = await isEnabled();
+    } catch (error) {
+      console.error('Failed to read autostart state', error);
+      autostartEnabled = false;
+    }
   };
 
   const syncUpdate = async (interactive = false) => {
@@ -44,7 +54,7 @@
 
     try {
       await closePendingUpdate();
-      const update = await check();
+      const update = await check({ timeout: 15_000 });
       if (update) {
         pendingUpdate = update;
         updatePendingVersion = update.version;
@@ -96,13 +106,23 @@
 
     updateBusy = true;
     updateStatusText = '下载中...';
+    let downloaded = 0;
+    let contentLength = 0;
 
     try {
       await pendingUpdate.downloadAndInstall((event) => {
-        if (event.event === 'Started') updateStatusText = '开始下载';
-        if (event.event === 'Progress') updateStatusText = '正在下载';
+        if (event.event === 'Started') {
+          contentLength = event.data.contentLength ?? 0;
+          updateStatusText = '开始下载';
+        }
+        if (event.event === 'Progress') {
+          downloaded += event.data.chunkLength;
+          updateStatusText = contentLength > 0
+            ? `正在下载 ${Math.min(100, Math.round(downloaded / contentLength * 100))}%`
+            : '正在下载';
+        }
         if (event.event === 'Finished') updateStatusText = '正在安装';
-      });
+      }, { timeout: 10 * 60_000 });
       appState.addActivity({
         source: 'SYSTEM',
         title: 'Update Installed',
@@ -162,20 +182,22 @@
   };
 
   onMount(async () => {
-    await refreshDesktopState();
-    await syncUpdate(false);
-    
     unlistenMedia = await listen<{title: string, artist: string, is_playing: boolean}>('media-update', (event) => {
       const payload = event.payload;
       currentSong = payload.title || '暂无播放';
       currentArtist = payload.artist || '未知';
       isPlaying = payload.is_playing;
     });
+
+    await refreshDesktopState();
+    await syncUpdate(false);
+    updateCheckTimer = setInterval(() => void syncUpdate(false), 6 * 60 * 60_000);
   });
 
   onDestroy(() => {
     void closePendingUpdate();
     if (unlistenMedia) unlistenMedia();
+    if (updateCheckTimer) clearInterval(updateCheckTimer);
   });
 
   async function mediaPrev() { await invoke('media_prev'); }

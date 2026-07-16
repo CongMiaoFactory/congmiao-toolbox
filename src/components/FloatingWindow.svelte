@@ -26,12 +26,17 @@
   let currentW = $state(0);
   let currentH = $state(0);
 
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   onMount(() => {
     currentX = x;
     currentY = y;
     currentW = width;
     currentH = height;
+  });
+
+  onDestroy(() => {
+    window.removeEventListener('pointermove', handlePointerMove);
+    window.removeEventListener('pointerup', handlePointerUp);
   });
 
   function handlePointerDown(e: PointerEvent) {

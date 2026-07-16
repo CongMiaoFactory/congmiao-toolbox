@@ -12,6 +12,15 @@ dist
 dist-ssr
 *.local
 
+# Local environment files and updater signing keys
+.env
+.env.*
+!.env.example
+*.key
+*.key.pub
+*.pem
+/~/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

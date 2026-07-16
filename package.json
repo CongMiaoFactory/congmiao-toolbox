@@ -1,13 +1,14 @@
 {
   "name": "congmiao-toolbox",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+    "version:sync": "bun scripts/sync-version.ts",
     "tauri": "tauri",
     "tauri:icon": "tauri icon src-tauri/icons/icons.png",
     "tauri:dev": "tauri dev",

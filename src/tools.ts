@@ -249,8 +249,8 @@ export async function runTool(id: ToolId) {
       runComingSoon(id, 'Duplicate Scan');
       break;
     case 'lucky-wheel':
-      appState.activeNavIndex = 1;
-      appState.activeToolId = 'lucky-wheel';
+      appState.openFloatingWindow('lucky-wheel');
+      appState.activeNavIndex = 0;
       appState.addActivity({
         source: 'TEXT',
         title: 'Lucky Wheel',

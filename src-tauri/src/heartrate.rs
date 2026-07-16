@@ -1,9 +1,9 @@
 use btleplug::api::{Central, CentralEvent, Manager as _, Peripheral, ScanFilter};
 use btleplug::platform::{Adapter, Manager};
+use futures::StreamExt;
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::OnceLock;
 use tauri::Emitter;
-use futures::StreamExt;
 use uuid::Uuid;
 
 // Standard Bluetooth Heart Rate Service & Measurement UUIDs
@@ -55,19 +55,25 @@ fn parse_hr_value(data: &[u8]) -> Option<u16> {
         } else {
             None
         }
+    } else if data.len() >= 2 {
+        Some(data[1] as u16)
     } else {
-        if data.len() >= 2 {
-            Some(data[1] as u16)
-        } else {
-            None
-        }
+        None
     }
 }
 
 async fn find_adapter() -> Result<Adapter, String> {
-    let manager = Manager::new().await.map_err(|e| format!("BLE Manager init failed: {}", e))?;
-    let adapters = manager.adapters().await.map_err(|e| format!("No BLE adapters: {}", e))?;
-    adapters.into_iter().next().ok_or_else(|| "No Bluetooth adapter found".to_string())
+    let manager = Manager::new()
+        .await
+        .map_err(|e| format!("BLE Manager init failed: {}", e))?;
+    let adapters = manager
+        .adapters()
+        .await
+        .map_err(|e| format!("No BLE adapters: {}", e))?;
+    adapters
+        .into_iter()
+        .next()
+        .ok_or_else(|| "No Bluetooth adapter found".to_string())
 }
 
 pub fn start_scan(app_handle: tauri::AppHandle) {
@@ -96,11 +102,15 @@ pub fn stop_scan() {
 async fn scan_and_connect(app_handle: tauri::AppHandle) -> Result<(), String> {
     let adapter = find_adapter().await?;
 
-    adapter.start_scan(ScanFilter::default())
+    adapter
+        .start_scan(ScanFilter::default())
         .await
         .map_err(|e| format!("Scan start failed: {}", e))?;
 
-    let mut events = adapter.events().await.map_err(|e| format!("Events failed: {}", e))?;
+    let mut events = adapter
+        .events()
+        .await
+        .map_err(|e| format!("Events failed: {}", e))?;
 
     // Look for a device with the HR service
     let mut target_peripheral = None;
@@ -124,7 +134,7 @@ async fn scan_and_connect(app_handle: tauri::AppHandle) -> Result<(), String> {
                     Some(CentralEvent::DeviceDiscovered(id)) | Some(CentralEvent::DeviceUpdated(id)) => {
                         if let Ok(peripheral) = adapter.peripheral(&id).await {
                             if let Ok(Some(props)) = peripheral.properties().await {
-                                let has_hr = props.services.iter().any(|s| *s == HR_SERVICE_UUID);
+                                let has_hr = props.services.contains(&HR_SERVICE_UUID);
                                 if has_hr {
                                     // Check device filter
                                     let filter = get_target().lock().unwrap().clone();
@@ -158,18 +168,31 @@ async fn scan_and_connect(app_handle: tauri::AppHandle) -> Result<(), String> {
 
     let peripheral = target_peripheral.ok_or("No HR device found")?;
 
-    peripheral.connect().await.map_err(|e| format!("Connect failed: {}", e))?;
+    peripheral
+        .connect()
+        .await
+        .map_err(|e| format!("Connect failed: {}", e))?;
     IS_CONNECTED.store(true, Ordering::SeqCst);
 
-    peripheral.discover_services().await.map_err(|e| format!("Service discovery failed: {}", e))?;
+    peripheral
+        .discover_services()
+        .await
+        .map_err(|e| format!("Service discovery failed: {}", e))?;
 
     let chars = peripheral.characteristics();
-    let hr_char = chars.iter().find(|c| c.uuid == HR_MEASUREMENT_UUID)
+    let hr_char = chars
+        .iter()
+        .find(|c| c.uuid == HR_MEASUREMENT_UUID)
         .ok_or("HR Measurement characteristic not found")?;
 
-    peripheral.subscribe(hr_char).await.map_err(|e| format!("Subscribe failed: {}", e))?;
+    peripheral
+        .subscribe(hr_char)
+        .await
+        .map_err(|e| format!("Subscribe failed: {}", e))?;
 
-    let mut notification_stream = peripheral.notifications().await
+    let mut notification_stream = peripheral
+        .notifications()
+        .await
         .map_err(|e| format!("Notification stream failed: {}", e))?;
 
     // Read notifications until stopped
