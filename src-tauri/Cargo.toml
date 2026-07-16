@@ -1,6 +1,6 @@
 [package]
 name = "congmiao-toolbox"
-version = "0.2.2"
+version = "0.2.3"
 description = "A personal desktop toolbox built with Tauri and Svelte."
 authors = ["tenonsuzu"]
 edition = "2021"
