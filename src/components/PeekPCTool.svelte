@@ -49,6 +49,7 @@
   let isPrivacyEnabled = $state(false);
   let isGlobalBlurEnabled = $state(true);
   let privacyImagePath = $state<string | null>(null);
+  let privacyImageMessage = $state('');
   let isToggling = $state(false);
   let serverUrl = $state('http://127.0.0.1:3000');
   let peekStatus = $state<PeekStatusResponse>(emptyStatus);
@@ -104,6 +105,7 @@
 
   onMount(async () => {
     await refreshServerUrl();
+    privacyImagePath = await invoke<string | null>('get_peek_privacy_image');
     sensitiveRules = await invoke<string[]>('get_sensitive_app_rules');
     sensitiveRuleText = sensitiveRules.join('\n');
     await checkStatus();
@@ -150,14 +152,24 @@
     });
 
     if (selected && typeof selected === 'string') {
-      privacyImagePath = selected;
-      await invoke('set_peek_privacy_image', { path: selected });
+      try {
+        privacyImagePath = await invoke<string | null>('set_peek_privacy_image', { path: selected });
+        privacyImageMessage = '隐私图片已保存';
+      } catch (error) {
+        console.error(error);
+        privacyImageMessage = '图片读取失败，请重新选择';
+      }
     }
   };
 
   const handleClearImage = async () => {
-    privacyImagePath = null;
-    await invoke('set_peek_privacy_image', { path: null });
+    try {
+      privacyImagePath = await invoke<string | null>('set_peek_privacy_image', { path: null });
+      privacyImageMessage = '隐私图片已清除';
+    } catch (error) {
+      console.error(error);
+      privacyImageMessage = '清除失败';
+    }
   };
 
   const handleCopyUrl = async (value: string) => {
@@ -273,16 +285,16 @@
 
       <div class="setting-row">
         <div class="setting-copy">
-          <span>启用隐私遮罩</span>
-          <small>强制整屏重度模糊或显示替代图片</small>
+          <span>整屏重度高斯模糊</span>
+          <small>开启后强制对整张截图进行更强的高斯模糊</small>
         </div>
-        <button class="switch" class:on={isPrivacyEnabled} onclick={handleTogglePrivacy} title="切换隐私遮罩" aria-label="切换隐私遮罩">
+        <button class="switch" class:on={isPrivacyEnabled} onclick={handleTogglePrivacy} title="切换整屏高斯模糊" aria-label="切换整屏高斯模糊">
           <div class="knob"></div>
         </button>
       </div>
 
       <div class="privacy-note">
-        指定程序规则始终优先应用。隐私遮罩开启时，无论常规全局模糊开关如何，都会进一步模糊整张截图或返回替代图片。
+        未设置隐私图片时使用整屏高斯模糊；设置图片后，开启隐私模式会优先显示该图片。
       </div>
 
       <div class="image-selector">
@@ -300,6 +312,7 @@
             选择图片
           </button>
         {/if}
+        {#if privacyImageMessage}<small class="privacy-image-message">{privacyImageMessage}</small>{/if}
       </div>
     </div>
 
@@ -311,7 +324,7 @@
       </div>
 
       <p class="program-note">
-        当前版本会匹配前台程序名、可执行文件名或窗口标题，并对该窗口区域进行额外强模糊。
+        检测并添加程序后，会持续枚举它的可见窗口；无论它是不是前台窗口，都会对对应区域进行额外强模糊。
       </p>
 
       <label class="rule-editor">
@@ -356,7 +369,7 @@
       {#if peekStatus.foreground_window?.is_masked}
         <div class="mask-active">
           <span class="material-symbols-rounded">shield_lock</span>
-          当前前台窗口已应用额外模糊
+          当前前台窗口已应用高斯模糊
         </div>
       {/if}
     </div>
@@ -447,7 +460,7 @@
 
   <div class="tip-box">
     <span class="material-symbols-rounded">info</span>
-    <p>关闭常规全局模糊后，截图保持清晰，仅对命中规则的前台程序窗口进行额外模糊。</p>
+    <p>关闭常规全局模糊后，截图保持清晰，仅对已添加程序的所有可见窗口进行额外模糊。</p>
   </div>
 </div>
 
@@ -812,6 +825,11 @@
     gap: 10px;
   }
 
+  .privacy-image-message {
+    color: var(--text-caption);
+    font-size: 10px;
+  }
+
   .outline-btn {
     display: flex;
     align-items: center;
@@ -834,27 +852,27 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: var(--bg-panel1);
     padding: 8px 12px;
     border-radius: 10px;
+    background: var(--bg-panel1);
     font-size: 13px;
   }
 
   .path {
+    overflow: hidden;
+    max-width: 180px;
     color: var(--text-primary);
     font-weight: 500;
-    overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 180px;
   }
 
   .clear-btn {
-    background: transparent;
+    display: flex;
     border: none;
     color: var(--text-caption);
+    background: transparent;
     cursor: pointer;
-    display: flex;
   }
 
   .clear-btn:hover { color: #FF3B30; }

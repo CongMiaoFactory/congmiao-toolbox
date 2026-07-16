@@ -92,8 +92,10 @@ fn get_peek_status() -> bool {
 #[tauri::command]
 fn toggle_privacy() -> bool {
     let current = peek_server::PRIVACY_MODE.load(std::sync::atomic::Ordering::SeqCst);
-    peek_server::PRIVACY_MODE.store(!current, std::sync::atomic::Ordering::SeqCst);
-    !current
+    let enabled = !current;
+    peek_server::PRIVACY_MODE.store(enabled, std::sync::atomic::Ordering::SeqCst);
+    peek_server::clear_screenshot_cache();
+    enabled
 }
 
 #[tauri::command]
@@ -121,12 +123,13 @@ fn get_peek_server_url() -> String {
 }
 
 #[tauri::command]
-fn set_peek_privacy_image(path: Option<String>) {
-    let mut p = peek_server::PRIVACY_IMAGE_PATH
-        .get_or_init(|| std::sync::Mutex::new(None))
-        .lock()
-        .unwrap();
-    *p = path;
+fn get_peek_privacy_image() -> Option<String> {
+    peek_server::get_privacy_image()
+}
+
+#[tauri::command]
+fn set_peek_privacy_image(path: Option<String>) -> Result<Option<String>, String> {
+    peek_server::set_privacy_image(path)
 }
 
 #[tauri::command]
@@ -224,6 +227,7 @@ pub fn run() {
             toggle_global_blur,
             get_global_blur_status,
             get_peek_server_url,
+            get_peek_privacy_image,
             set_peek_privacy_image,
             get_sensitive_app_rules,
             detect_peek_applications,
