@@ -1,6 +1,6 @@
 [package]
 name = "congmiao-toolbox"
-version = "0.2.5"
+version = "0.2.6"
 description = "A personal desktop toolbox built with Tauri and Svelte."
 authors = ["tenonsuzu"]
 edition = "2021"
@@ -33,8 +33,13 @@ active-win-pos-rs = "0.10.0"
 btleplug = { version = "0.12.0", features = ["serde"] }
 uuid = { version = "1.22.0", features = ["v4"] }
 futures = "0.3.32"
+blake3 = "1.8.2"
+chrono = { version = "0.4.42", features = ["clock"] }
 tauri-plugin-dialog = "2.6.0"
 tauri-plugin-store = "2.4.3"
+
+[dev-dependencies]
+tempfile = "3.23.0"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", features = [

@@ -9,7 +9,7 @@ export type ToolId =
 
 export type WindowToolId = Extract<ToolId,
   'timer' | 'json' | 'python' | 'encoder' | 'color' | 'hash' | 'image' |
-  'translator' | 'peek_pc' | 'lucky-wheel'
+  'translator' | 'peek_pc' | 'lucky-wheel' | 'batch-rename' | 'sort-rule' | 'duplicate-scan'
 >;
 
 export interface ToolDefinition {
@@ -47,9 +47,9 @@ export const toolRegistry: ToolDefinition[] = [
   { id: 'base64', kind: 'action', title: 'Base64', description: '编码剪贴板文本', icon: 'encrypted', accent: 'teal', keywords: ['base64', 'encode'], shortcut: 'Cmd/Ctrl+B', showInLaunchpad: false, showInDock: false },
   { id: 'hash-check', kind: 'action', title: '剪贴板 SHA-256', description: '计算剪贴板文本的 SHA-256', icon: 'fingerprint', accent: 'blue', keywords: ['hash', 'sha256', 'clipboard'], shortcut: 'Cmd/Ctrl+H', showInLaunchpad: false, showInDock: false },
 
-  { id: 'batch-rename', kind: 'planned', title: '批量重命名', description: '将在 v0.2.6 提供', icon: 'edit_square', accent: 'blue', keywords: ['rename', 'file', 'batch'], showInLaunchpad: false, showInDock: false },
-  { id: 'sort-rule', kind: 'planned', title: '规则整理文件', description: '将在 v0.2.6 提供', icon: 'sort', accent: 'blue', keywords: ['sort', 'rule', 'file'], showInLaunchpad: false, showInDock: false },
-  { id: 'duplicate-scan', kind: 'planned', title: '重复文件扫描', description: '将在 v0.2.6 提供', icon: 'content_copy', accent: 'blue', keywords: ['duplicate', 'scan', 'file'], showInLaunchpad: false, showInDock: false },
+  { id: 'batch-rename', kind: 'window', title: '批量重命名', description: '组合规则预览、执行与撤销', icon: 'edit_square', accent: 'blue', keywords: ['rename', 'file', 'batch', '重命名'], defaultSize: windowSize(1100, 740, 760, 540), showInLaunchpad: true, showInDock: false },
+  { id: 'sort-rule', kind: 'window', title: '规则整理文件', description: '按类型、日期或大小安全整理', icon: 'sort', accent: 'green', keywords: ['sort', 'rule', 'file', '整理'], defaultSize: windowSize(1100, 740, 760, 540), showInLaunchpad: true, showInDock: false },
+  { id: 'duplicate-scan', kind: 'window', title: '重复文件扫描', description: '分阶段哈希生成只读报告', icon: 'content_copy', accent: 'purple', keywords: ['duplicate', 'scan', 'file', '重复'], defaultSize: windowSize(1050, 720, 720, 520), showInLaunchpad: true, showInDock: false },
 ];
 
 export const toolsById = new Map(toolRegistry.map((tool) => [tool.id, tool]));

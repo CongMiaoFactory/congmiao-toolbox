@@ -4,6 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use sysinfo::System;
 use tauri::Manager;
 
+mod file_tools;
 mod heartrate;
 #[cfg(target_os = "windows")]
 mod media_module;
@@ -241,6 +242,7 @@ pub fn run() {
         .manage(AppState {
             sys: Mutex::new(sys),
         })
+        .manage(file_tools::FileToolState::default())
         .invoke_handler(tauri::generate_handler![
             get_system_stats,
             recover_workspace_store,
@@ -266,7 +268,15 @@ pub fn run() {
             open_hr_overlay,
             media_module::media_play_pause,
             media_module::media_next,
-            media_module::media_prev
+            media_module::media_prev,
+            file_tools::preview_batch_rename,
+            file_tools::preview_file_organize,
+            file_tools::execute_file_plan,
+            file_tools::list_file_operations,
+            file_tools::undo_file_operation,
+            file_tools::clear_file_operation_history,
+            file_tools::start_duplicate_scan,
+            file_tools::cancel_file_job
         ]);
 
     #[cfg(desktop)]

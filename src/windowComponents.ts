@@ -9,6 +9,9 @@ import PeekPCTool from './components/PeekPCTool.svelte';
 import PythonFormatter from './components/PythonFormatter.svelte';
 import TimerTool from './components/TimerTool.svelte';
 import TranslatorTool from './components/TranslatorTool.svelte';
+import BatchRenameTool from './components/BatchRenameTool.svelte';
+import FileOrganizerTool from './components/FileOrganizerTool.svelte';
+import DuplicateScannerTool from './components/DuplicateScannerTool.svelte';
 import type { WindowToolId } from './toolRegistry';
 
 export const windowComponents: Record<WindowToolId, Component> = {
@@ -22,4 +25,7 @@ export const windowComponents: Record<WindowToolId, Component> = {
   translator: TranslatorTool,
   peek_pc: PeekPCTool,
   'lucky-wheel': LuckyWheelTool,
+  'batch-rename': BatchRenameTool,
+  'sort-rule': FileOrganizerTool,
+  'duplicate-scan': DuplicateScannerTool,
 };
