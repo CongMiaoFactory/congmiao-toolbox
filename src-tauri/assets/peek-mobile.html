@@ -1,0 +1,12 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101827"><title>Peek PC</title><link rel="stylesheet" href="/peek-mobile.css"></head><body>
+<main>
+  <header><div><small>CONGMIAO TOOLBOX</small><h1>Peek PC</h1></div><span id="connection" class="pill">未连接</span></header>
+  <section id="pair-view" class="card"><h2>连接这台电脑</h2><p id="pair-hint">正在检查配对状态…</p><label>设备名称<input id="device-name" maxlength="64" placeholder="例如：我的手机"></label><label>6 位配对码<input id="pair-code" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" placeholder="000000"></label><button id="pair-button" class="primary">安全配对</button><p id="pair-error" class="error"></p></section>
+  <div id="dashboard" hidden>
+    <section class="summary"><article class="card"><small>CPU</small><strong id="cpu">--</strong></article><article class="card"><small>内存</small><strong id="memory">--</strong></article></section>
+    <section class="card"><div class="section-title"><h2>电脑画面</h2><div class="actions"><select id="interval" aria-label="刷新频率"><option value="0">手动</option><option value="5" selected>5 秒</option><option value="10">10 秒</option><option value="30">30 秒</option></select><button id="refresh">刷新</button></div></div><div class="screen"><img id="screenshot" alt="电脑隐私截图"><span id="screen-placeholder">点击刷新获取画面</span></div><p id="refresh-state"></p></section>
+    <section class="card"><div class="section-title"><div><h2>隐私模式</h2><p>开启后显示隐私图片或整屏重度模糊</p></div><button id="privacy" class="switch" role="switch" aria-checked="false"><i></i></button></div></section>
+    <section class="card details"><h2>当前状态</h2><dl><div><dt>前台窗口</dt><dd id="window">--</dd></div><div><dt>运行程序</dt><dd id="process">--</dd></div><div><dt>当前媒体</dt><dd id="media">--</dd></div></dl></section>
+    <button id="forget" class="danger">断开并清除本机令牌</button>
+  </div>
+</main><script src="/peek-mobile.js"></script></body></html>

@@ -3,26 +3,29 @@
   import { onDestroy, onMount } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
   import { copyText } from '../tools';
+  import QRCode from 'qrcode';
+  import { errorMessage, toast } from '../toast.svelte';
+  import { pairingRemainingSeconds, peekQrPayload } from '../peekSecurity';
 
   interface MemoryInfo {
     total: number;
     used: number;
     available: number;
-    used_percent: number;
+    usedPercent: number;
   }
 
   interface ForegroundWindowInfo {
     title: string;
-    process_name: string;
-    process_id: number;
-    is_masked: boolean;
+    processName: string;
+    processId: number;
+    isMasked: boolean;
   }
 
   interface PeekStatusResponse {
     status: string;
     cpu: number;
     memory: MemoryInfo;
-    foreground_window: ForegroundWindowInfo | null;
+    foregroundWindow: ForegroundWindowInfo | null;
     media: { title: string; artist: string; is_playing: boolean } | null;
   }
 
@@ -32,6 +35,12 @@
     process_id: number;
   }
 
+  interface PeekServerConfig { listenScope: 'lan' | 'local'; port: number }
+  interface PairingSession { code: string; expiresAt: number }
+  interface AuthorizedDevice { id: string; name: string; createdAt: number; lastSeenAt: number }
+  interface ConnectionLog { id: string; timestamp: number; deviceId: string | null; deviceName: string | null; ip: string; event: string; success: boolean }
+  interface SecurityState { config: PeekServerConfig; pairing: PairingSession | null; devices: AuthorizedDevice[]; logs: ConnectionLog[] }
+
   const emptyStatus: PeekStatusResponse = {
     status: 'idle',
     cpu: 0,
@@ -39,9 +48,9 @@
       total: 0,
       used: 0,
       available: 0,
-      used_percent: 0
+      usedPercent: 0
     },
-    foreground_window: null,
+    foregroundWindow: null,
     media: null
   };
 
@@ -54,6 +63,7 @@
   let serverUrl = $state('http://127.0.0.1:3000');
   let peekStatus = $state<PeekStatusResponse>(emptyStatus);
   let statusTimer: ReturnType<typeof setInterval> | undefined;
+  let securityTimer: ReturnType<typeof setInterval> | undefined;
   let sensitiveRules = $state<string[]>([]);
   let sensitiveRuleText = $state('');
   let isSavingRules = $state(false);
@@ -61,6 +71,15 @@
   let detectedApplications = $state<DetectedApplication[]>([]);
   let isDetectingApplications = $state(false);
   let applicationSearch = $state('');
+  let securityState = $state<SecurityState>({ config: { listenScope: 'lan', port: 3000 }, pairing: null, devices: [], logs: [] });
+  let editScope = $state<'lan' | 'local'>('lan');
+  let editPort = $state(3000);
+  let qrDataUrl = $state('');
+  let now = $state(Date.now());
+  let clockTimer: ReturnType<typeof setInterval> | undefined;
+  let isSecurityBusy = $state(false);
+
+  const pairingSeconds = $derived(pairingRemainingSeconds(securityState.pairing?.expiresAt ?? null, now));
 
   const filteredApplications = $derived(detectedApplications.filter((application) => {
     const search = applicationSearch.trim().toLowerCase();
@@ -79,6 +98,12 @@
 
   const refreshServerUrl = async () => {
     serverUrl = await invoke<string>('get_peek_server_url');
+    try { qrDataUrl = await QRCode.toDataURL(peekQrPayload(serverUrl), { width: 180, margin: 1 }); } catch { qrDataUrl = ''; }
+  };
+
+  const loadSecurity = async (syncEdit = false) => {
+    securityState = await invoke<SecurityState>('get_peek_security_state');
+    if (syncEdit) { editScope = securityState.config.listenScope; editPort = securityState.config.port; }
   };
 
   const checkStatus = async () => {
@@ -94,9 +119,7 @@
     await refreshServerUrl();
 
     try {
-      const resp = await fetch(statusUrl);
-      if (!resp.ok) throw new Error(`Unexpected status: ${resp.status}`);
-      peekStatus = await resp.json();
+      peekStatus = await invoke<PeekStatusResponse>('get_peek_monitor_status');
     } catch (error) {
       console.error(error);
       peekStatus = emptyStatus;
@@ -108,12 +131,17 @@
     privacyImagePath = await invoke<string | null>('get_peek_privacy_image');
     sensitiveRules = await invoke<string[]>('get_sensitive_app_rules');
     sensitiveRuleText = sensitiveRules.join('\n');
+    await loadSecurity(true);
     await checkStatus();
     statusTimer = setInterval(checkStatus, 3000);
+    securityTimer = setInterval(() => void loadSecurity(), 10000);
+    clockTimer = setInterval(() => now = Date.now(), 1000);
   });
 
   onDestroy(() => {
     if (statusTimer) clearInterval(statusTimer);
+    if (securityTimer) clearInterval(securityTimer);
+    if (clockTimer) clearInterval(clockTimer);
   });
 
   const handleToggleServer = async () => {
@@ -125,13 +153,17 @@
         await invoke('stop_peek_server');
         isRunning = false;
         peekStatus = emptyStatus;
+        toast.info('Peek PC 服务已停止');
       } else {
         serverUrl = await invoke<string>('start_peek_server');
         isRunning = true;
+        toast.success('Peek PC 安全服务已启动');
         await checkStatus();
       }
+      await loadSecurity();
+      await refreshServerUrl();
     } catch (error) {
-      console.error(error);
+      toast.error(errorMessage(error, '切换 Peek PC 服务失败'));
     }
 
     isToggling = false;
@@ -158,6 +190,7 @@
       } catch (error) {
         console.error(error);
         privacyImageMessage = '图片读取失败，请重新选择';
+        toast.error(errorMessage(error, privacyImageMessage));
       }
     }
   };
@@ -169,11 +202,38 @@
     } catch (error) {
       console.error(error);
       privacyImageMessage = '清除失败';
+      toast.error(errorMessage(error, privacyImageMessage));
     }
   };
 
   const handleCopyUrl = async (value: string) => {
-    await copyText(value);
+    if (await copyText(value)) toast.success('访问地址已复制');
+  };
+
+  const saveServerConfig = async () => {
+    if (isRunning) { toast.error('请先停止服务再修改监听配置'); return; }
+    isSecurityBusy = true;
+    try {
+      const config = await invoke<PeekServerConfig>('set_peek_server_config', { config: { listenScope: editScope, port: Number(editPort) } });
+      securityState.config = config; await refreshServerUrl(); toast.success('Peek PC 监听配置已保存');
+    } catch (error) { toast.error(errorMessage(error, '保存监听配置失败')); }
+    finally { isSecurityBusy = false; }
+  };
+
+  const createPairingCode = async () => {
+    try { securityState.pairing = await invoke<PairingSession>('create_peek_pairing_code'); toast.success('已生成 5 分钟有效的配对码'); }
+    catch (error) { toast.error(errorMessage(error, '生成配对码失败')); }
+  };
+
+  const revokeDevice = async (device: AuthorizedDevice) => {
+    if (!confirm(`撤销设备“${device.name}”的访问权限？`)) return;
+    try { await invoke('revoke_peek_device', { deviceId: device.id }); await loadSecurity(); toast.success(`已断开 ${device.name}`); }
+    catch (error) { toast.error(errorMessage(error, '撤销设备失败')); }
+  };
+
+  const clearConnectionLogs = async () => {
+    try { await invoke('clear_peek_connection_logs'); await loadSecurity(); toast.success('连接日志已清空'); }
+    catch (error) { toast.error(errorMessage(error, '清空日志失败')); }
   };
 
   const saveSensitiveRules = async () => {
@@ -192,6 +252,7 @@
     } catch (error) {
       console.error(error);
       ruleMessage = '保存失败';
+      toast.error(errorMessage(error, ruleMessage));
     } finally {
       isSavingRules = false;
     }
@@ -209,6 +270,7 @@
     } catch (error) {
       console.error(error);
       ruleMessage = '程序检测失败';
+      toast.error(errorMessage(error, ruleMessage));
     } finally {
       isDetectingApplications = false;
     }
@@ -231,6 +293,7 @@
     } catch (error) {
       console.error(error);
       ruleMessage = '添加程序失败';
+      toast.error(errorMessage(error, ruleMessage));
     }
   };
 </script>
@@ -265,6 +328,35 @@
         <span class="material-symbols-rounded">{isRunning ? 'stop_circle' : 'play_circle'}</span>
         {isRunning ? '停止服务端' : '启动服务端'}
       </button>
+    </div>
+
+    <div class="card security-card">
+      <div class="card-title"><span class="material-symbols-rounded">shield_lock</span>安全连接</div>
+      <div class="security-address">
+        {#if qrDataUrl}<img src={qrDataUrl} alt="Peek PC 访问地址二维码" />{/if}
+        <div><span class="label">手机访问地址</span><code>{serverUrl}</code><small>二维码仅包含地址，不包含配对码或令牌</small></div>
+      </div>
+      <div class="config-row">
+        <label>监听范围<select bind:value={editScope} disabled={isRunning}><option value="lan">局域网</option><option value="local">仅本机</option></select></label>
+        <label>端口<input type="number" min="1024" max="65535" bind:value={editPort} disabled={isRunning} /></label>
+        <button class="outline-btn compact" onclick={saveServerConfig} disabled={isRunning || isSecurityBusy}>保存配置</button>
+      </div>
+      <div class="pairing-block">
+        <div><span class="label">一次性配对码</span>{#if securityState.pairing && pairingSeconds > 0}<strong class="pair-code">{securityState.pairing.code}</strong><small>{pairingSeconds} 秒后失效</small>{:else}<small>当前没有有效配对码</small>{/if}</div>
+        <button class="save-rule-btn" onclick={createPairingCode} disabled={!isRunning}>生成配对码</button>
+      </div>
+    </div>
+
+    <div class="card devices-card">
+      <div class="card-title"><span class="material-symbols-rounded">devices</span>已授权设备 <span class="beta-badge">{securityState.devices.length}/20</span></div>
+      {#each securityState.devices as device (device.id)}
+        <div class="device-row"><div><strong>{device.name}</strong><small>最后访问 {new Date(device.lastSeenAt).toLocaleString()}</small></div><button class="clear-btn" onclick={() => revokeDevice(device)}>撤销</button></div>
+      {:else}<p class="program-note">尚无设备。启动服务后生成配对码，再用手机访问上方地址。</p>{/each}
+    </div>
+
+    <div class="card logs-card">
+      <div class="card-title log-title"><span><span class="material-symbols-rounded">history</span>连接日志</span><button class="mini-btn" onclick={clearConnectionLogs} disabled={!securityState.logs.length}>清空</button></div>
+      <div class="log-list">{#each securityState.logs.slice(0, 20) as log (log.id)}<div class="log-row" class:failed={!log.success}><span>{log.event}</span><strong>{log.deviceName || log.ip}</strong><small>{new Date(log.timestamp).toLocaleString()}</small></div>{:else}<p class="program-note">暂无连接记录</p>{/each}</div>
     </div>
 
     <div class="card settings-card">
@@ -366,7 +458,7 @@
       {/if}
 
       {#if ruleMessage}<div class="rule-message">{ruleMessage}</div>{/if}
-      {#if peekStatus.foreground_window?.is_masked}
+      {#if peekStatus.foregroundWindow?.isMasked}
         <div class="mask-active">
           <span class="material-symbols-rounded">shield_lock</span>
           当前前台窗口已应用高斯模糊
@@ -387,7 +479,7 @@
         </div>
         <div class="metric">
           <span class="metric-label">内存占用</span>
-          <strong>{peekStatus.memory.used_percent.toFixed(1)}%</strong>
+          <strong>{peekStatus.memory.usedPercent.toFixed(1)}%</strong>
         </div>
         <div class="metric wide">
           <span class="metric-label">已用 / 总量</span>
@@ -401,11 +493,11 @@
 
       <div class="window-card">
         <span class="label">前台窗口</span>
-        {#if peekStatus.foreground_window}
-          <strong class="window-title">{peekStatus.foreground_window.title || '未命名窗口'}</strong>
+        {#if peekStatus.foregroundWindow}
+          <strong class="window-title">{peekStatus.foregroundWindow.title || '未命名窗口'}</strong>
           <span class="window-meta">
-            {peekStatus.foreground_window.process_name || '未知进程'} · PID {peekStatus.foreground_window.process_id}
-            {peekStatus.foreground_window.is_masked ? ' · 已额外模糊' : ''}
+            {peekStatus.foregroundWindow.processName || '未知进程'} · PID {peekStatus.foregroundWindow.processId}
+            {peekStatus.foregroundWindow.isMasked ? ' · 已额外模糊' : ''}
           </span>
         {:else}
           <span class="window-empty">当前暂时获取不到前台窗口信息</span>
@@ -453,7 +545,7 @@
       </div>
 
       <p class="endpoint-note">
-        这版参考了 `Peek-PC-2.0` 的状态接口思路，补上了前台窗口信息；截图则固定为默认模糊输出，不再暴露额外调参。
+        接口从 v0.2.7 起必须携带已配对设备的 Bearer 令牌；推荐直接使用上方移动端页面。
       </p>
     </div>
   </div>
@@ -943,4 +1035,7 @@
 
   .tip-box .material-symbols-rounded { color: #0A84FF; font-size: 20px; }
   .tip-box p { margin: 0; font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+
+  .security-card,.devices-card,.logs-card{grid-column:span 2}.security-address{display:flex;align-items:center;gap:16px;padding:12px;border-radius:14px;background:var(--bg-panel1)}.security-address img{width:104px;height:104px;border-radius:8px}.security-address>div{min-width:0;display:flex;flex-direction:column;gap:6px}.security-address code{overflow:hidden;text-overflow:ellipsis;color:var(--text-primary)}.security-address small,.device-row small,.pairing-block small{color:var(--text-caption);font-size:11px}.config-row{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end}.config-row label{display:flex;flex-direction:column;gap:5px;color:var(--text-secondary);font-size:12px}.config-row input,.config-row select{width:100%;padding:8px;border:1px solid var(--border-subtle);border-radius:9px;background:var(--bg-panel1);color:var(--text-primary)}.pairing-block,.device-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid var(--border-subtle)}.pairing-block>div,.device-row>div{display:flex;flex-direction:column;gap:4px}.pair-code{font:700 28px/1 ui-monospace,monospace;letter-spacing:.16em;color:#0A84FF}.device-row strong{color:var(--text-primary)}.log-title{justify-content:space-between}.log-title>span{display:flex;align-items:center;gap:8px}.log-list{max-height:240px;overflow:auto}.log-row{display:grid;grid-template-columns:100px 1fr auto;gap:10px;padding:8px 0;border-top:1px solid var(--border-subtle);font-size:12px}.log-row>span{color:#16a085}.log-row.failed>span{color:#e74c3c}.log-row strong{overflow:hidden;text-overflow:ellipsis;color:var(--text-primary)}.log-row small{color:var(--text-caption)}
+  @media(max-width:800px){.security-card,.devices-card,.logs-card{grid-column:auto}.config-row{grid-template-columns:1fr}.security-address{align-items:flex-start}.log-row{grid-template-columns:80px 1fr}.log-row small{grid-column:2}}
 </style>

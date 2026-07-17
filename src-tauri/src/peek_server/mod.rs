@@ -1,7 +1,13 @@
 use active_win_pos_rs::{ActiveWindow, WindowPosition};
 use axum::{
-    body::Body, http::StatusCode, response::IntoResponse, response::Response, routing::get, Json,
-    Router,
+    body::Body,
+    extract::rejection::JsonRejection,
+    extract::{ConnectInfo, State as AxumState},
+    http::{header, Request, StatusCode},
+    middleware::{self, Next},
+    response::{Html, IntoResponse, Response},
+    routing::get,
+    Json, Router,
 };
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
@@ -9,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Cursor;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -16,7 +23,9 @@ use std::time::{Duration, Instant};
 use sysinfo::System;
 use tauri::{AppHandle, Manager};
 use tokio::sync::{oneshot, Mutex as AsyncMutex};
-use tower_http::cors::{Any, CorsLayer};
+
+pub mod security;
+use security::{PairInfo, PairRequest, PeekSecurityState};
 
 #[cfg(target_os = "windows")]
 use windows::core::BOOL;
@@ -57,16 +66,18 @@ const WINDOW_SNAPSHOT_CACHE_TTL: Duration = Duration::from_millis(250);
 const PROCESS_NAME_CACHE_TTL: Duration = Duration::from_secs(10);
 const SENSITIVE_WINDOW_MARGIN: f64 = 12.0;
 
-#[derive(Serialize)]
-struct MemoryInfo {
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryInfo {
     total: f64,
     used: f64,
     available: f64,
     used_percent: f64,
 }
 
-#[derive(Serialize)]
-struct ForegroundWindowInfo {
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForegroundWindowInfo {
     title: String,
     process_name: String,
     process_id: u64,
@@ -82,8 +93,9 @@ pub struct DetectedApplication {
     window: Option<SensitiveWindow>,
 }
 
-#[derive(Serialize)]
-struct StatusResponse {
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatusResponse {
     status: &'static str,
     cpu: f32,
     memory: MemoryInfo,
@@ -591,44 +603,191 @@ fn get_process_name_cached(process_id: u32) -> String {
     name
 }
 
-pub async fn run_server() -> Result<(), String> {
+#[derive(Serialize)]
+struct ApiErrorBody {
+    code: &'static str,
+    message: String,
+}
+
+fn api_error(status: StatusCode, code: &'static str, message: impl Into<String>) -> Response {
+    (
+        status,
+        Json(ApiErrorBody {
+            code,
+            message: message.into(),
+        }),
+    )
+        .into_response()
+}
+
+fn add_security_headers(response: &mut Response) {
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("no-store"),
+    );
+    headers.insert(
+        "X-Content-Type-Options",
+        header::HeaderValue::from_static("nosniff"),
+    );
+    headers.insert("X-Frame-Options", header::HeaderValue::from_static("DENY"));
+}
+
+async fn auth_middleware(
+    AxumState(app): AxumState<AppHandle>,
+    ConnectInfo(address): ConnectInfo<SocketAddr>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    let token = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "));
+    let endpoint = request.uri().path().trim_start_matches("/api/");
+    let authorized = token.and_then(|token| {
+        app.state::<PeekSecurityState>()
+            .authenticate(token, &address.ip().to_string(), endpoint)
+    });
+    let mut response = if authorized.is_some() {
+        next.run(request).await
+    } else {
+        app.state::<PeekSecurityState>()
+            .log_denied(&address.ip().to_string(), endpoint);
+        api_error(
+            StatusCode::UNAUTHORIZED,
+            "unauthorized",
+            "访问令牌无效或已被撤销",
+        )
+    };
+    add_security_headers(&mut response);
+    response
+}
+
+async fn response_headers_middleware(request: Request<Body>, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    add_security_headers(&mut response);
+    response
+}
+
+async fn mobile_index() -> Response {
+    let mut response = Html(include_str!("../../assets/peek-mobile.html")).into_response();
+    response.headers_mut().insert(header::CONTENT_SECURITY_POLICY, header::HeaderValue::from_static("default-src 'self'; img-src 'self' blob: data:; connect-src 'self'; style-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'"));
+    add_security_headers(&mut response);
+    response
+}
+
+async fn mobile_css() -> Response {
+    let mut response = (
+        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        include_str!("../../assets/peek-mobile.css"),
+    )
+        .into_response();
+    add_security_headers(&mut response);
+    response
+}
+
+async fn mobile_js() -> Response {
+    let mut response = (
+        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        include_str!("../../assets/peek-mobile.js"),
+    )
+        .into_response();
+    add_security_headers(&mut response);
+    response
+}
+
+async fn pair_info_handler(AxumState(app): AxumState<AppHandle>) -> Json<PairInfo> {
+    Json(app.state::<PeekSecurityState>().pair_info())
+}
+
+async fn pair_handler(
+    AxumState(app): AxumState<AppHandle>,
+    ConnectInfo(address): ConnectInfo<SocketAddr>,
+    request: Result<Json<PairRequest>, JsonRejection>,
+) -> Response {
+    let Json(request) = match request {
+        Ok(value) => value,
+        Err(_) => {
+            return api_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                "配对请求格式无效",
+            )
+        }
+    };
+    match app
+        .state::<PeekSecurityState>()
+        .pair(request, &address.ip().to_string())
+    {
+        Ok(response) => Json(response).into_response(),
+        Err(error) => {
+            let status = if error.contains("频繁") { StatusCode::TOO_MANY_REQUESTS } else { StatusCode::BAD_REQUEST };
+            api_error(status, "pairing_failed", error)
+        }
+    }
+}
+
+pub async fn run_server(app_handle: AppHandle) -> Result<(), String> {
     if IS_RUNNING
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
     {
-        return Ok(());
+        return Err("Peek PC 服务已经在运行".into());
     }
-
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
-
-    let app = Router::new()
+    let config = app_handle.state::<PeekSecurityState>().config();
+    let protected = Router::new()
         .route("/api/status", get(status_handler))
         .route("/api/screenshot", get(screenshot_handler))
         .route("/api/privacy", get(get_privacy).post(set_privacy))
-        .layer(cors);
-
-    let listener = match tokio::net::TcpListener::bind("0.0.0.0:3000").await {
+        .route_layer(middleware::from_fn_with_state(
+            app_handle.clone(),
+            auth_middleware,
+        ));
+    let app = Router::new()
+        .route("/", get(mobile_index))
+        .route("/peek-mobile.css", get(mobile_css))
+        .route("/peek-mobile.js", get(mobile_js))
+        .route("/api/pair-info", get(pair_info_handler))
+        .route("/api/pair", axum::routing::post(pair_handler))
+        .merge(protected)
+        .layer(middleware::from_fn(response_headers_middleware))
+        .with_state(app_handle.clone());
+    let host = if config.listen_scope == "local" {
+        "127.0.0.1"
+    } else {
+        "0.0.0.0"
+    };
+    let bind_address = format!("{host}:{}", config.port);
+    let listener = match tokio::net::TcpListener::bind(&bind_address).await {
         Ok(listener) => listener,
         Err(error) => {
             IS_RUNNING.store(false, Ordering::SeqCst);
             return Err(format!(
-                "Failed to bind Peek PC server on port 3000: {error}"
+                "无法监听 {bind_address}，请检查端口是否被占用：{error}"
             ));
         }
     };
+
+    app_handle
+        .state::<PeekSecurityState>()
+        .ensure_pairing_for_first_device();
+    app_handle
+        .state::<PeekSecurityState>()
+        .log_server_event("server_start", true);
 
     let (tx, rx) = oneshot::channel();
     *get_tx().lock().unwrap() = Some(tx);
 
     tokio::spawn(async move {
-        if let Err(error) = axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                rx.await.ok();
-            })
-            .await
+        if let Err(error) = axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            rx.await.ok();
+        })
+        .await
         {
             eprintln!("Peek PC server error: {error}");
         }
@@ -640,13 +799,22 @@ pub async fn run_server() -> Result<(), String> {
     Ok(())
 }
 
-pub fn stop_server() {
+pub async fn stop_server(app: &AppHandle) {
     if let Some(tx) = get_tx().lock().unwrap().take() {
         let _ = tx.send(());
     }
+    app.state::<PeekSecurityState>().clear_pairing();
+    app.state::<PeekSecurityState>()
+        .log_server_event("server_stop", true);
+    for _ in 0..40 {
+        if !IS_RUNNING.load(Ordering::SeqCst) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 }
 
-async fn status_handler() -> impl IntoResponse {
+pub fn monitor_status() -> StatusResponse {
     let (cpu, memory) = {
         let mut sys = get_status_system().lock().unwrap();
         sys.refresh_cpu_usage();
@@ -699,13 +867,17 @@ async fn status_handler() -> impl IntoResponse {
         }
     };
 
-    Json(StatusResponse {
+    StatusResponse {
         status: "success",
         cpu,
         memory,
         foreground_window,
         media,
-    })
+    }
+}
+
+async fn status_handler() -> impl IntoResponse {
+    Json(monitor_status())
 }
 
 async fn screenshot_handler() -> Response {
@@ -903,13 +1075,14 @@ fn blur_sensitive_window(
 }
 
 fn jpeg_response(bytes: Vec<u8>) -> Response {
-    Response::builder()
+    let mut response = Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "image/jpeg")
-        .header("Cache-Control", "no-cache")
-        .header("Access-Control-Allow-Origin", "*")
+        .header("Cache-Control", "no-store")
         .body(Body::from(bytes))
-        .unwrap()
+        .unwrap();
+    add_security_headers(&mut response);
+    response
 }
 
 fn empty_error_response() -> Response {
@@ -931,6 +1104,29 @@ fn privacy_message(enabled: bool) -> &'static str {
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[tokio::test]
+    async fn mobile_page_has_security_headers_and_no_cors() {
+        let response = mobile_index().await;
+        assert!(response
+            .headers()
+            .contains_key(header::CONTENT_SECURITY_POLICY));
+        assert_eq!(
+            response.headers().get(header::CACHE_CONTROL).unwrap(),
+            "no-store"
+        );
+        assert!(!response
+            .headers()
+            .contains_key("Access-Control-Allow-Origin"));
+        let screenshot = jpeg_response(vec![1, 2, 3]);
+        assert_eq!(
+            screenshot.headers().get(header::CACHE_CONTROL).unwrap(),
+            "no-store"
+        );
+        assert!(!screenshot
+            .headers()
+            .contains_key("Access-Control-Allow-Origin"));
+    }
 
     #[test]
     fn normalizes_sensitive_rules() {

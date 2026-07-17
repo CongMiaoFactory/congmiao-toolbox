@@ -1,6 +1,7 @@
 <script lang="ts">
   import { appState, settingsGroups } from '../state.svelte';
   import { encodeWallpaper } from '../persistence';
+  import { errorMessage, toast } from '../toast.svelte';
   
   let tempBgUrl = $state(appState.bgImageUrl);
   let tempBgBlur = $state(appState.bgBlur);
@@ -10,6 +11,7 @@
   function saveBg() {
     appState.setAppearance({ bgImageUrl: tempBgUrl, bgBlur: tempBgBlur });
     wallpaperMessage = '外观设置已保存';
+    toast.success(wallpaperMessage);
   }
 
   async function handleFileSelect(event: Event) {
@@ -20,8 +22,10 @@
         tempBgUrl = await encodeWallpaper(target.files[0]);
         appState.setAppearance({ bgImageUrl: tempBgUrl });
         wallpaperMessage = '本地壁纸已保存';
+        toast.success(wallpaperMessage);
       } catch (error) {
-        wallpaperMessage = error instanceof Error ? error.message : '壁纸处理失败';
+        wallpaperMessage = errorMessage(error, '壁纸处理失败');
+        toast.error(wallpaperMessage);
       } finally {
         target.value = '';
       }

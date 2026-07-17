@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getVersion } from '@tauri-apps/api/app';
-  import { ask, message } from '@tauri-apps/plugin-dialog';
+  import { ask } from '@tauri-apps/plugin-dialog';
   import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart';
   import { relaunch } from '@tauri-apps/plugin-process';
   import { check, type Update } from '@tauri-apps/plugin-updater';
@@ -8,6 +8,7 @@
   import { appState } from '../state.svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
+  import { errorMessage, toast } from '../toast.svelte';
 
   let autostartEnabled = $state<boolean | null>(null);
   let autostartBusy = $state(false);
@@ -70,10 +71,7 @@
         updatePendingVersion = null;
         updateStatusText = '已是最新';
         if (interactive) {
-          await message(`当前已经是最新版本 v${appState.appVersion}。`, {
-            title: '检查更新',
-            kind: 'info',
-          });
+          toast.success(`当前已经是最新版本 v${appState.appVersion}`);
         }
       }
     } catch (error) {
@@ -81,10 +79,7 @@
       updatePendingVersion = null;
       updateStatusText = interactive ? '更新失败' : '检查更新';
       if (interactive) {
-        await message('检查更新失败，请稍后再试。', {
-          title: '检查更新',
-          kind: 'error',
-        });
+        toast.error(errorMessage(error, '检查更新失败，请稍后再试'));
       }
     } finally {
       updateBusy = false;
@@ -142,13 +137,11 @@
       updateStatusText = shouldRestart ? '正在重启' : '重启后生效';
       await closePendingUpdate();
       if (shouldRestart) await relaunch();
+      else toast.success('更新安装完成，重启应用后生效');
     } catch (error) {
       console.error(error);
       updateStatusText = '安装失败';
-      await message('下载或安装更新失败，请稍后再试。', {
-        title: '版本更新',
-        kind: 'error',
-      });
+      toast.error(errorMessage(error, '下载或安装更新失败，请稍后再试'));
     } finally {
       updateBusy = false;
     }
@@ -170,12 +163,15 @@
       if (autostartEnabled) {
         await disable();
         autostartEnabled = false;
+        toast.info('已关闭开机自启');
       } else {
         await enable();
         autostartEnabled = true;
+        toast.success('已开启开机自启');
       }
     } catch (error) {
       console.error(error);
+      toast.error(errorMessage(error, '切换开机自启失败'));
     } finally {
       autostartBusy = false;
     }

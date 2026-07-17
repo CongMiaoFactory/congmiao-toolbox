@@ -884,7 +884,7 @@ dependencies = [
 
 [[package]]
 name = "congmiao-toolbox"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "active-win-pos-rs",
  "axum",
@@ -897,6 +897,7 @@ dependencies = [
  "screenshots",
  "serde",
  "serde_json",
+ "subtle",
  "sysinfo",
  "tauri",
  "tauri-build",

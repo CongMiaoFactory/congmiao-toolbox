@@ -16,6 +16,7 @@
   import LauncherWidget from './components/LauncherWidget.svelte';
   import FloatingWindow from './components/FloatingWindow.svelte';
   import SettingsModal from './components/SettingsModal.svelte';
+  import ToastHost from './components/ToastHost.svelte';
 
   import { appState } from './state.svelte';
   import { runTool } from './tools';
@@ -187,6 +188,8 @@
 {/if}
 
 {/if}
+
+<ToastHost />
 
 <style>
   .workspace-loading {

@@ -56,11 +56,18 @@ struct SystemStats {
     memory_total: u64,
 }
 
-fn peek_server_url() -> String {
-    let my_local_ip = local_ip_address::local_ip()
-        .map(|ip| ip.to_string())
-        .unwrap_or_else(|_| "127.0.0.1".to_string());
-    format!("http://{}:3000", my_local_ip)
+fn peek_server_url(app: &tauri::AppHandle) -> String {
+    let config = app
+        .state::<peek_server::security::PeekSecurityState>()
+        .config();
+    let host = if config.listen_scope == "local" {
+        "127.0.0.1".into()
+    } else {
+        local_ip_address::local_ip()
+            .map(|ip| ip.to_string())
+            .unwrap_or_else(|_| "127.0.0.1".into())
+    };
+    format!("http://{}:{}", host, config.port)
 }
 
 #[tauri::command]
@@ -97,14 +104,14 @@ fn recover_workspace_store(app_handle: tauri::AppHandle) -> Result<Option<String
 }
 
 #[tauri::command]
-async fn start_peek_server() -> Result<String, String> {
-    peek_server::run_server().await?;
-    Ok(peek_server_url())
+async fn start_peek_server(app: tauri::AppHandle) -> Result<String, String> {
+    peek_server::run_server(app.clone()).await?;
+    Ok(peek_server_url(&app))
 }
 
 #[tauri::command]
-async fn stop_peek_server() -> Result<(), String> {
-    peek_server::stop_server();
+async fn stop_peek_server(app: tauri::AppHandle) -> Result<(), String> {
+    peek_server::stop_server(&app).await;
     Ok(())
 }
 
@@ -142,8 +149,67 @@ fn get_global_blur_status() -> bool {
 }
 
 #[tauri::command]
-fn get_peek_server_url() -> String {
-    peek_server_url()
+fn get_peek_server_url(app: tauri::AppHandle) -> String {
+    peek_server_url(&app)
+}
+
+#[tauri::command]
+fn get_peek_monitor_status() -> peek_server::StatusResponse {
+    peek_server::monitor_status()
+}
+
+#[tauri::command]
+fn get_peek_security_state(
+    state: tauri::State<'_, peek_server::security::PeekSecurityState>,
+) -> peek_server::security::PeekSecuritySnapshot {
+    state.snapshot()
+}
+
+#[tauri::command]
+fn set_peek_server_config(
+    config: peek_server::security::PeekServerConfig,
+    state: tauri::State<'_, peek_server::security::PeekSecurityState>,
+) -> Result<peek_server::security::PeekServerConfig, String> {
+    if peek_server::IS_RUNNING.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("请先停止 Peek PC 服务再修改监听配置".into());
+    }
+    state.set_config(config)
+}
+
+#[tauri::command]
+fn create_peek_pairing_code(
+    state: tauri::State<'_, peek_server::security::PeekSecurityState>,
+) -> peek_server::security::PairingSession {
+    state.create_pairing()
+}
+
+#[tauri::command]
+fn list_peek_devices(
+    state: tauri::State<'_, peek_server::security::PeekSecurityState>,
+) -> Vec<peek_server::security::AuthorizedDevice> {
+    state.devices()
+}
+
+#[tauri::command]
+fn revoke_peek_device(
+    device_id: String,
+    state: tauri::State<'_, peek_server::security::PeekSecurityState>,
+) -> Result<(), String> {
+    state.revoke(&device_id)
+}
+
+#[tauri::command]
+fn get_peek_connection_logs(
+    state: tauri::State<'_, peek_server::security::PeekSecurityState>,
+) -> Vec<peek_server::security::ConnectionLog> {
+    state.logs()
+}
+
+#[tauri::command]
+fn clear_peek_connection_logs(
+    state: tauri::State<'_, peek_server::security::PeekSecurityState>,
+) -> Result<(), String> {
+    state.clear_logs()
 }
 
 #[tauri::command]
@@ -231,6 +297,9 @@ pub fn run() {
 
     let builder = tauri::Builder::default()
         .setup(|app| {
+            let security = peek_server::security::PeekSecurityState::load(app.handle())
+                .map_err(std::io::Error::other)?;
+            app.manage(security);
             peek_server::init(app.handle());
             usage_tracker::init(app.handle().clone());
             media_module::start_media_listener(app.handle().clone());
@@ -254,6 +323,14 @@ pub fn run() {
             toggle_global_blur,
             get_global_blur_status,
             get_peek_server_url,
+            get_peek_monitor_status,
+            get_peek_security_state,
+            set_peek_server_config,
+            create_peek_pairing_code,
+            list_peek_devices,
+            revoke_peek_device,
+            get_peek_connection_logs,
+            clear_peek_connection_logs,
             get_peek_privacy_image,
             set_peek_privacy_image,
             get_sensitive_app_rules,

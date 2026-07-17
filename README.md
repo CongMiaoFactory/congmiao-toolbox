@@ -5,7 +5,7 @@ Congmiao Toolbox is a local desktop toolbox built with Tauri 2, Svelte 5, and Bu
 ## Features
 
 - Desktop utility hub with multiple local tools in a single window
-- Peek PC LAN monitoring with blurred screenshot output and foreground window status
+- Peek PC secure LAN monitoring with one-time pairing, authorized devices, connection logs, and a mobile dashboard
 - Screen time tracking
 - Heart rate overlay / widget support
 - In-app updater and launch-at-login support
@@ -48,11 +48,11 @@ Version releases are published from GitHub Actions when you push a tag in the fo
 Prepare the version locally, commit it, and then create the matching tag:
 
 ```bash
-bun run version:sync 0.2.6
+bun run version:sync 0.2.7
 git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
-git commit -m "chore: release v0.2.6"
-git tag v0.2.6
-git push origin main v0.2.6
+git commit -m "chore: release v0.2.7"
+git tag v0.2.7
+git push origin main v0.2.7
 ```
 
 The release workflow also synchronizes the build version from the tag as a final safeguard, so a
