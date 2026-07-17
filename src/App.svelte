@@ -17,12 +17,14 @@
   import FloatingWindow from './components/FloatingWindow.svelte';
   import SettingsModal from './components/SettingsModal.svelte';
   import ToastHost from './components/ToastHost.svelte';
+  import LazyToolHost from './components/LazyToolHost.svelte';
 
   import { appState } from './state.svelte';
   import { runTool } from './tools';
   import { onMount } from 'svelte';
+  import { listen } from '@tauri-apps/api/event';
+  import { toast } from './toast.svelte';
   import { windowTools, type WindowToolId } from './toolRegistry';
-  import { windowComponents } from './windowComponents';
 
   let isOverlay = $state(false);
 
@@ -39,6 +41,21 @@
       return;
     }
     let mounted = true;
+    let unlistenPalette: (() => void) | null = null;
+    let unlistenPrivacy: (() => void) | null = null;
+
+    void listen('open-command-palette', () => {
+      appState.commandOpen = true;
+    }).then((unlisten) => {
+      if (mounted) unlistenPalette = unlisten;
+      else unlisten();
+    });
+    void listen<boolean>('peek-privacy-changed', (event) => {
+      toast.info(event.payload ? 'Peek PC 隐私模式已开启' : 'Peek PC 隐私模式已关闭');
+    }).then((unlisten) => {
+      if (mounted) unlistenPrivacy = unlisten;
+      else unlisten();
+    });
 
     const handleKeydown = (event: KeyboardEvent) => {
       const withMeta = event.metaKey || event.ctrlKey;
@@ -70,6 +87,8 @@
       window.removeEventListener('keydown', handleKeydown);
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('resize', handleResize);
+      unlistenPalette?.();
+      unlistenPrivacy?.();
     };
   });
 
@@ -148,7 +167,6 @@
     <!-- 窗口层 (始终悬浮在桌面和小组件之上) -->
     <div class="windows-layer">
       {#each appState.windows.filter((window) => !window.isMinimized) as win (win.id)}
-        {@const ToolComponent = windowComponents[win.toolId]}
         <FloatingWindow 
           windowId={win.id}
           toolId={win.toolId}
@@ -167,7 +185,7 @@
           onMaximize={() => appState.toggleWindowMaximize(win.id)}
           onGeometryChange={(geometry) => appState.updateWindowGeometry(win.id, geometry)}
         >
-          <ToolComponent />
+          <LazyToolHost toolId={win.toolId} />
         </FloatingWindow>
       {/each}
     </div>

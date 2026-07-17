@@ -68,7 +68,7 @@ pub async fn media_prev() -> Result<(), String> {
 pub fn start_media_listener(app_handle: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let manager_result = GlobalSystemMediaTransportControlsSessionManager::RequestAsync();
-        
+
         if let Ok(manager_op) = manager_result {
             if let Ok(manager) = manager_op.await {
                 loop {

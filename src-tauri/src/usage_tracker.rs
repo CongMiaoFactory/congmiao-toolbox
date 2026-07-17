@@ -19,7 +19,10 @@ pub struct TrackerState {
 }
 
 pub fn init(app_handle: AppHandle) {
-    let app_data_dir = app_handle.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("./"));
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("./"));
     fs::create_dir_all(&app_data_dir).unwrap_or_default();
     let save_path = app_data_dir.join("app_usage.json");
 
@@ -52,7 +55,8 @@ pub fn init(app_handle: AppHandle) {
             }
 
             save_tick += 1;
-            if save_tick >= 10 { // Save every 10 seconds for robustness
+            if save_tick >= 10 {
+                // Save every 10 seconds for robustness
                 save_tick = 0;
                 let data = state.data.lock().unwrap();
                 if let Ok(json) = serde_json::to_string(&*data) {
@@ -66,7 +70,8 @@ pub fn init(app_handle: AppHandle) {
 #[tauri::command]
 pub fn get_app_usage(state: tauri::State<'_, Arc<TrackerState>>) -> Vec<AppUsage> {
     let data = state.data.lock().unwrap();
-    let mut vec: Vec<AppUsage> = data.iter()
+    let mut vec: Vec<AppUsage> = data
+        .iter()
         .map(|(k, v)| AppUsage {
             app_name: k.clone(),
             seconds: *v,

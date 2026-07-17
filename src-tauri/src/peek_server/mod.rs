@@ -1,7 +1,6 @@
 use active_win_pos_rs::{ActiveWindow, WindowPosition};
 use axum::{
     body::Body,
-    extract::rejection::JsonRejection,
     extract::{ConnectInfo, State as AxumState},
     http::{header, Request, StatusCode},
     middleware::{self, Next},
@@ -25,7 +24,7 @@ use tauri::{AppHandle, Manager};
 use tokio::sync::{oneshot, Mutex as AsyncMutex};
 
 pub mod security;
-use security::{PairInfo, PairRequest, PeekSecurityState};
+use security::{AuthOutcome, PeekSecurityState};
 
 #[cfg(target_os = "windows")]
 use windows::core::BOOL;
@@ -645,20 +644,19 @@ async fn auth_middleware(
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "));
     let endpoint = request.uri().path().trim_start_matches("/api/");
-    let authorized = token.and_then(|token| {
-        app.state::<PeekSecurityState>()
-            .authenticate(token, &address.ip().to_string(), endpoint)
-    });
-    let mut response = if authorized.is_some() {
-        next.run(request).await
-    } else {
-        app.state::<PeekSecurityState>()
-            .log_denied(&address.ip().to_string(), endpoint);
-        api_error(
-            StatusCode::UNAUTHORIZED,
-            "unauthorized",
-            "访问令牌无效或已被撤销",
-        )
+    let outcome = app.state::<PeekSecurityState>().authenticate(
+        token.unwrap_or_default(),
+        &address.ip().to_string(),
+        endpoint,
+    );
+    let mut response = match outcome {
+        AuthOutcome::Granted => next.run(request).await,
+        AuthOutcome::Denied => api_error(StatusCode::UNAUTHORIZED, "unauthorized", "API 密钥无效"),
+        AuthOutcome::RateLimited => api_error(
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate_limited",
+            "认证失败次数过多，请稍后再试",
+        ),
     };
     add_security_headers(&mut response);
     response
@@ -697,37 +695,6 @@ async fn mobile_js() -> Response {
     response
 }
 
-async fn pair_info_handler(AxumState(app): AxumState<AppHandle>) -> Json<PairInfo> {
-    Json(app.state::<PeekSecurityState>().pair_info())
-}
-
-async fn pair_handler(
-    AxumState(app): AxumState<AppHandle>,
-    ConnectInfo(address): ConnectInfo<SocketAddr>,
-    request: Result<Json<PairRequest>, JsonRejection>,
-) -> Response {
-    let Json(request) = match request {
-        Ok(value) => value,
-        Err(_) => {
-            return api_error(
-                StatusCode::BAD_REQUEST,
-                "invalid_request",
-                "配对请求格式无效",
-            )
-        }
-    };
-    match app
-        .state::<PeekSecurityState>()
-        .pair(request, &address.ip().to_string())
-    {
-        Ok(response) => Json(response).into_response(),
-        Err(error) => {
-            let status = if error.contains("频繁") { StatusCode::TOO_MANY_REQUESTS } else { StatusCode::BAD_REQUEST };
-            api_error(status, "pairing_failed", error)
-        }
-    }
-}
-
 pub async fn run_server(app_handle: AppHandle) -> Result<(), String> {
     if IS_RUNNING
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -735,7 +702,12 @@ pub async fn run_server(app_handle: AppHandle) -> Result<(), String> {
     {
         return Err("Peek PC 服务已经在运行".into());
     }
-    let config = app_handle.state::<PeekSecurityState>().config();
+    let security = app_handle.state::<PeekSecurityState>();
+    if !security.has_api_key() {
+        IS_RUNNING.store(false, Ordering::SeqCst);
+        return Err("请先生成 Peek PC API 密钥".into());
+    }
+    let config = security.config();
     let protected = Router::new()
         .route("/api/status", get(status_handler))
         .route("/api/screenshot", get(screenshot_handler))
@@ -748,8 +720,6 @@ pub async fn run_server(app_handle: AppHandle) -> Result<(), String> {
         .route("/", get(mobile_index))
         .route("/peek-mobile.css", get(mobile_css))
         .route("/peek-mobile.js", get(mobile_js))
-        .route("/api/pair-info", get(pair_info_handler))
-        .route("/api/pair", axum::routing::post(pair_handler))
         .merge(protected)
         .layer(middleware::from_fn(response_headers_middleware))
         .with_state(app_handle.clone());
@@ -769,9 +739,6 @@ pub async fn run_server(app_handle: AppHandle) -> Result<(), String> {
         }
     };
 
-    app_handle
-        .state::<PeekSecurityState>()
-        .ensure_pairing_for_first_device();
     app_handle
         .state::<PeekSecurityState>()
         .log_server_event("server_start", true);
@@ -803,7 +770,6 @@ pub async fn stop_server(app: &AppHandle) {
     if let Some(tx) = get_tx().lock().unwrap().take() {
         let _ = tx.send(());
     }
-    app.state::<PeekSecurityState>().clear_pairing();
     app.state::<PeekSecurityState>()
         .log_server_event("server_stop", true);
     for _ in 0..40 {
@@ -1126,6 +1092,11 @@ mod tests {
         assert!(!screenshot
             .headers()
             .contains_key("Access-Control-Allow-Origin"));
+        let mobile_html = include_str!("../../assets/peek-mobile.html");
+        let mobile_js = include_str!("../../assets/peek-mobile.js");
+        assert!(mobile_html.contains("API 密钥"));
+        assert!(!mobile_html.contains("配对码"));
+        assert!(!mobile_js.contains("/api/pair"));
     }
 
     #[test]

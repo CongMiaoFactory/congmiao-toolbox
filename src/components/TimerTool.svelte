@@ -1,6 +1,7 @@
 <script lang="ts">
   import { appState } from '../state.svelte';
   import { onDestroy, onMount } from 'svelte';
+  import { notifyDesktop } from '../desktopIntegration';
 
   let now = $state(Date.now());
   let interval: number | null = null;
@@ -24,6 +25,7 @@
         countdown.running = false;
         countdown.targetAt = null;
         appState.markTimersChanged();
+        void notifyDesktop('倒计时结束', 'Congmiao Toolbox 倒计时已经完成');
       }
     }
   }

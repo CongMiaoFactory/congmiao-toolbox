@@ -2,6 +2,7 @@
   import { appState, settingsGroups } from '../state.svelte';
   import { encodeWallpaper } from '../persistence';
   import { errorMessage, toast } from '../toast.svelte';
+  import { notifyDesktop } from '../desktopIntegration';
   
   let tempBgUrl = $state(appState.bgImageUrl);
   let tempBgBlur = $state(appState.bgBlur);
@@ -30,6 +31,11 @@
         target.value = '';
       }
     }
+  }
+
+  async function testNotification() {
+    if (await notifyDesktop('Congmiao Toolbox', '桌面通知工作正常')) toast.success('测试通知已发送');
+    else toast.error('未获得系统通知权限');
   }
 </script>
 
@@ -88,6 +94,31 @@
             <input type="range" min="0" max="100" bind:value={tempBgBlur} oninput={saveBg} />
             <span class="blur-value">{tempBgBlur}px</span>
           </div>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h3>桌面集成</h3>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-title">快速搜索快捷键</span>
+            <span class="setting-desc">在任意程序中显示 Toolbox 并打开命令面板</span>
+          </div>
+          <kbd>Ctrl + Alt + Space</kbd>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-title">系统通知</span>
+            <span class="setting-desc">用于倒计时和番茄钟完成提醒</span>
+          </div>
+          <button class="action-btn" onclick={testNotification}>发送测试通知</button>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-title">系统托盘</span>
+            <span class="setting-desc">关闭主窗口后继续驻留，可从托盘完全退出</span>
+          </div>
+          <span class="integration-status">已启用</span>
         </div>
       </section>
 
@@ -257,6 +288,10 @@
     color: var(--text-secondary, #666);
     font-size: 12px;
   }
+
+  kbd,.integration-status{padding:6px 10px;border-radius:7px;background:var(--bg-app,#fff);border:1px solid var(--border-subtle,#ccc);color:var(--text-secondary,#666);font:600 12px/1.2 ui-monospace,monospace}
+  .integration-status{color:#16a085}
+  :global([data-theme="dark"]) kbd{background:#222;border-color:#444;color:#ddd}
 
   :global([data-theme="dark"]) .setting-title { color: #eee; }
   :global([data-theme="dark"]) .setting-desc { color: #aaa; }

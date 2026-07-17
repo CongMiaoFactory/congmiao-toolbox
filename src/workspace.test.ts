@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { migrateWindowToolId, toolRegistry, windowTools } from './toolRegistry';
-import { windowComponents } from './windowComponents';
+import { windowComponentLoaders } from './windowComponents';
 import { clampGeometry, defaultTimerSnapshot, isWorkspaceV1, reconcileTimers } from './workspace';
 
 describe('workspace geometry', () => {
@@ -48,6 +48,6 @@ describe('workspace schema and tool registry', () => {
   it('contains unique tool IDs and a component for every window tool', () => {
     const ids = toolRegistry.map((tool) => tool.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(Object.keys(windowComponents).sort()).toEqual(windowTools.map((tool) => tool.id).sort());
+    expect(Object.keys(windowComponentLoaders).sort()).toEqual(windowTools.map((tool) => tool.id).sort());
   });
 });

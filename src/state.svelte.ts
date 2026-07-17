@@ -55,7 +55,7 @@ export function formatMeta() {
 }
 
 export class AppState {
-  appVersion = $state('0.2.5');
+  appVersion = $state('0.2.8');
   ready = $state(false);
   theme = $state<'dark' | 'light'>('light');
   bgImageUrl = $state(DEFAULT_WALLPAPER);

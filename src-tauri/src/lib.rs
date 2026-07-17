@@ -3,6 +3,8 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use sysinfo::System;
 use tauri::Manager;
+#[cfg(desktop)]
+use tauri::{Emitter, WindowEvent};
 
 mod file_tools;
 mod heartrate;
@@ -47,6 +49,64 @@ mod media_module {
 
 struct AppState {
     sys: Mutex<System>,
+}
+
+#[cfg(desktop)]
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+#[cfg(desktop)]
+fn setup_desktop_integration(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+    let show = MenuItem::with_id(app, "show", "显示 Congmiao Toolbox", true, None::<&str>)?;
+    let palette = MenuItem::with_id(app, "palette", "打开快速搜索", true, None::<&str>)?;
+    let privacy = MenuItem::with_id(app, "privacy", "切换 Peek PC 隐私模式", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &palette, &privacy, &quit])?;
+
+    let mut tray = TrayIconBuilder::new()
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .tooltip("Congmiao Toolbox")
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "show" => show_main_window(app),
+            "palette" => {
+                show_main_window(app);
+                let _ = app.emit("open-command-palette", ());
+            }
+            "privacy" => {
+                let enabled = !peek_server::PRIVACY_MODE.load(std::sync::atomic::Ordering::SeqCst);
+                peek_server::PRIVACY_MODE.store(enabled, std::sync::atomic::Ordering::SeqCst);
+                peek_server::clear_screenshot_cache();
+                let _ = app.emit("peek-privacy-changed", enabled);
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if matches!(
+                event,
+                TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                }
+            ) {
+                show_main_window(tray.app_handle());
+            }
+        });
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.build(app)?;
+    Ok(())
 }
 
 #[derive(serde::Serialize)]
@@ -177,25 +237,10 @@ fn set_peek_server_config(
 }
 
 #[tauri::command]
-fn create_peek_pairing_code(
+fn generate_peek_api_key(
     state: tauri::State<'_, peek_server::security::PeekSecurityState>,
-) -> peek_server::security::PairingSession {
-    state.create_pairing()
-}
-
-#[tauri::command]
-fn list_peek_devices(
-    state: tauri::State<'_, peek_server::security::PeekSecurityState>,
-) -> Vec<peek_server::security::AuthorizedDevice> {
-    state.devices()
-}
-
-#[tauri::command]
-fn revoke_peek_device(
-    device_id: String,
-    state: tauri::State<'_, peek_server::security::PeekSecurityState>,
-) -> Result<(), String> {
-    state.revoke(&device_id)
+) -> Result<peek_server::security::IssuedApiKey, String> {
+    state.generate_api_key()
 }
 
 #[tauri::command]
@@ -303,6 +348,8 @@ pub fn run() {
             peek_server::init(app.handle());
             usage_tracker::init(app.handle().clone());
             media_module::start_media_listener(app.handle().clone());
+            #[cfg(desktop)]
+            setup_desktop_integration(app)?;
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
@@ -326,9 +373,7 @@ pub fn run() {
             get_peek_monitor_status,
             get_peek_security_state,
             set_peek_server_config,
-            create_peek_pairing_code,
-            list_peek_devices,
-            revoke_peek_device,
+            generate_peek_api_key,
             get_peek_connection_logs,
             clear_peek_connection_logs,
             get_peek_privacy_image,
@@ -358,6 +403,19 @@ pub fn run() {
 
     #[cfg(desktop)]
     let builder = builder
+        .plugin(tauri_plugin_notification::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_shortcut("Ctrl+Alt+Space")
+                .expect("valid default global shortcut")
+                .with_handler(|app, _, event| {
+                    if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        show_main_window(app);
+                        let _ = app.emit("open-command-palette", ());
+                    }
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
@@ -367,6 +425,15 @@ pub fn run() {
         );
 
     builder
+        .on_window_event(|window, event| {
+            #[cfg(desktop)]
+            if window.label() == "main" {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

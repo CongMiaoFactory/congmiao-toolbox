@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { appState } from '../state.svelte';
+  import { notifyDesktop } from '../desktopIntegration';
 
   let intervalId: number | null = null;
 
@@ -19,7 +20,13 @@
       transitioned = true;
     }
     timer.remainingSeconds = Math.max(0, Math.ceil((timer.targetAt - now) / 1000));
-    if (transitioned) appState.markTimersChanged();
+    if (transitioned) {
+      appState.markTimersChanged();
+      void notifyDesktop(
+        timer.mode === 'work' ? '休息结束' : '专注完成',
+        timer.mode === 'work' ? '开始下一轮专注吧' : '起来活动一下，休息一会儿',
+      );
+    }
   }
 
   function startTicker() {
