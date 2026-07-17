@@ -225,6 +225,7 @@ export function runComingSoon(id: ToolId, title: string) {
 
 export async function runTool(id: ToolId) {
   const tool = getTool(id);
+  if (tool) appState.recordToolUsage(id);
   if (tool?.kind === 'window') {
     appState.openFloatingWindow(id);
     appState.activeNavIndex = 0;

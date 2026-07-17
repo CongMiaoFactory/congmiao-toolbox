@@ -13,6 +13,8 @@
     "store:default",
     "dialog:default",
     "global-shortcut:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister-all",
     "notification:default"
   ]
 }

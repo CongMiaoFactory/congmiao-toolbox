@@ -24,6 +24,7 @@
   import { onMount } from 'svelte';
   import { listen } from '@tauri-apps/api/event';
   import { toast } from './toast.svelte';
+  import { configureGlobalShortcut } from './desktopIntegration';
   import { windowTools, type WindowToolId } from './toolRegistry';
 
   let isOverlay = $state(false);
@@ -43,6 +44,8 @@
     let mounted = true;
     let unlistenPalette: (() => void) | null = null;
     let unlistenPrivacy: (() => void) | null = null;
+    const handleGlobalPalette = () => { appState.commandOpen = true; };
+    window.addEventListener('congmiao:open-palette', handleGlobalPalette);
 
     void listen('open-command-palette', () => {
       appState.commandOpen = true;
@@ -78,6 +81,10 @@
     const handleResize = () => appState.reconcileWindowBounds();
     void appState.hydrate().then(() => {
       if (!mounted) return;
+      void configureGlobalShortcut(appState.globalShortcut).catch((error) => {
+        console.error('Failed to register global shortcut', error);
+        toast.error('全局快捷键注册失败，请在设置中更换组合键');
+      });
       window.addEventListener('keydown', handleKeydown);
       window.addEventListener('beforeunload', handleBeforeUnload);
       window.addEventListener('resize', handleResize);
@@ -87,14 +94,14 @@
       window.removeEventListener('keydown', handleKeydown);
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('congmiao:open-palette', handleGlobalPalette);
       unlistenPalette?.();
       unlistenPrivacy?.();
     };
   });
 
   function launchToolFromDirectory(id: WindowToolId) {
-    appState.openFloatingWindow(id);
-    appState.activeNavIndex = 0; // Go back to desktop
+    void runTool(id);
   }
 </script>
 

@@ -1,14 +1,15 @@
 <script lang="ts">
   import { appState } from '../state.svelte';
   import { windowTools, type WindowToolId } from '../toolRegistry';
+  import { runTool } from '../tools';
 
-  const launcherTools = windowTools.filter((tool) => tool.showInDock);
+  const launcherTools = $derived(windowTools.filter((tool) => tool.showInDock || appState.favorites.includes(tool.id)));
   const extraOpenTools = $derived(windowTools.filter((tool) =>
     !tool.showInDock && appState.windows.some((window) => window.toolId === tool.id)
   ));
 
   function launchTool(id: WindowToolId) {
-    appState.openFloatingWindow(id);
+    void runTool(id);
   }
 </script>
 

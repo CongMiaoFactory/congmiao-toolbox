@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { migrateWindowToolId, toolRegistry, windowTools } from './toolRegistry';
 import { windowComponentLoaders } from './windowComponents';
-import { clampGeometry, defaultTimerSnapshot, isWorkspaceV1, reconcileTimers } from './workspace';
+import { clampGeometry, defaultTimerSnapshot, isWorkspaceV1, reconcileTimers, timerPreset } from './workspace';
 
 describe('workspace geometry', () => {
   it('clamps restored windows into the visible desktop', () => {
@@ -31,6 +31,17 @@ describe('timer recovery', () => {
     const restored = reconcileTimers(timers, 70_000);
     expect(restored.pomodoro.mode).toBe('work');
     expect(restored.pomodoro.targetAt).toBe(121_000);
+  });
+
+  it('stores timer presets without live targets', () => {
+    const timers = defaultTimerSnapshot();
+    timers.countdown.running = true;
+    timers.countdown.targetAt = 12345;
+    timers.pomodoro.running = true;
+    timers.pomodoro.targetAt = 67890;
+    const preset = timerPreset(timers);
+    expect(preset.countdown).toMatchObject({ running: false, targetAt: null });
+    expect(preset.pomodoro).toMatchObject({ running: false, targetAt: null });
   });
 });
 

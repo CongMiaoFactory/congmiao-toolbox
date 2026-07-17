@@ -2,12 +2,14 @@
   import { appState, settingsGroups } from '../state.svelte';
   import { encodeWallpaper } from '../persistence';
   import { errorMessage, toast } from '../toast.svelte';
-  import { notifyDesktop } from '../desktopIntegration';
+  import { configureGlobalShortcut, GLOBAL_SHORTCUT_OPTIONS, notifyDesktop } from '../desktopIntegration';
+  import WorkspaceTemplates from './WorkspaceTemplates.svelte';
   
   let tempBgUrl = $state(appState.bgImageUrl);
   let tempBgBlur = $state(appState.bgBlur);
   let fileInput: HTMLInputElement;
   let wallpaperMessage = $state('');
+  let selectedShortcut = $state(appState.globalShortcut);
 
   function saveBg() {
     appState.setAppearance({ bgImageUrl: tempBgUrl, bgBlur: tempBgBlur });
@@ -36,6 +38,20 @@
   async function testNotification() {
     if (await notifyDesktop('Congmiao Toolbox', '桌面通知工作正常')) toast.success('测试通知已发送');
     else toast.error('未获得系统通知权限');
+  }
+
+  async function saveGlobalShortcut() {
+    const previous = appState.globalShortcut;
+    try {
+      await configureGlobalShortcut(selectedShortcut);
+      appState.globalShortcut = selectedShortcut;
+      appState.schedulePersist();
+      toast.success('全局快捷键已更新');
+    } catch (error) {
+      selectedShortcut = previous;
+      try { await configureGlobalShortcut(previous); } catch { /* keep the original error */ }
+      toast.error(errorMessage(error, '快捷键注册失败，可能已被其他程序占用'));
+    }
   }
 </script>
 
@@ -98,13 +114,21 @@
       </section>
 
       <section class="settings-section">
+        <h3>工作区模板</h3>
+        <WorkspaceTemplates />
+      </section>
+
+      <section class="settings-section">
         <h3>桌面集成</h3>
         <div class="setting-item">
           <div class="setting-info">
             <span class="setting-title">快速搜索快捷键</span>
             <span class="setting-desc">在任意程序中显示 Toolbox 并打开命令面板</span>
           </div>
-          <kbd>Ctrl + Alt + Space</kbd>
+          <div class="shortcut-editor">
+            <select bind:value={selectedShortcut}>{#each GLOBAL_SHORTCUT_OPTIONS as shortcut}<option value={shortcut}>{shortcut}</option>{/each}</select>
+            <button class="action-btn" onclick={saveGlobalShortcut} disabled={selectedShortcut === appState.globalShortcut}>应用</button>
+          </div>
         </div>
         <div class="setting-item">
           <div class="setting-info">
@@ -289,9 +313,9 @@
     font-size: 12px;
   }
 
-  kbd,.integration-status{padding:6px 10px;border-radius:7px;background:var(--bg-app,#fff);border:1px solid var(--border-subtle,#ccc);color:var(--text-secondary,#666);font:600 12px/1.2 ui-monospace,monospace}
+  .integration-status{padding:6px 10px;border-radius:7px;background:var(--bg-app,#fff);border:1px solid var(--border-subtle,#ccc);color:var(--text-secondary,#666);font:600 12px/1.2 ui-monospace,monospace}
   .integration-status{color:#16a085}
-  :global([data-theme="dark"]) kbd{background:#222;border-color:#444;color:#ddd}
+  .shortcut-editor{display:flex;gap:7px}.shortcut-editor select{padding:7px 9px;border:1px solid var(--border-subtle);border-radius:8px;background:var(--bg-app);color:var(--text-primary)}
 
   :global([data-theme="dark"]) .setting-title { color: #eee; }
   :global([data-theme="dark"]) .setting-desc { color: #aaa; }

@@ -66,4 +66,32 @@ describe('AppState persistence', () => {
     state.toggleWindowMaximize(id);
     expect(state.windows[0].isMaximized).toBe(false);
   });
+
+  it('saves and applies a workspace template without replacing todos', async () => {
+    loadWorkspace.mockResolvedValue(null);
+    const state = new AppState();
+    await state.hydrate({ width: 1000, height: 700 });
+    state.addTodo('keep me');
+    state.openFloatingWindow('json');
+    state.theme = 'dark';
+    const template = state.saveWorkspaceTemplate('开发');
+    state.closeWindow(state.windows[0].id);
+    state.theme = 'light';
+
+    state.applyWorkspaceTemplate(template.id);
+    expect(state.theme).toBe('dark');
+    expect(state.windows[0].toolId).toBe('json');
+    expect(state.todos[0].text).toBe('keep me');
+  });
+
+  it('tracks favorites and bounded recent tool usage', async () => {
+    loadWorkspace.mockResolvedValue(null);
+    const state = new AppState();
+    await state.hydrate({ width: 1000, height: 700 });
+    state.toggleFavorite('timer');
+    state.recordToolUsage('timer');
+    state.recordToolUsage('timer');
+    expect(state.favorites).toEqual(['timer']);
+    expect(state.recentTools[0]).toMatchObject({ id: 'timer', useCount: 2 });
+  });
 });

@@ -210,6 +210,7 @@
     <button class="menu-item menu-btn" onclick={() => appState.activeNavIndex = 1}>应用</button>
     <button class="menu-item menu-btn" onclick={() => appState.activeNavIndex = 2}>统计</button>
     <button class="menu-item menu-btn" onclick={() => appState.commandOpen = true}>搜索</button>
+    <button class="menu-item menu-btn" onclick={() => { appState.commandQuery = '> workspace '; appState.commandIndex = 0; appState.commandOpen = true; }}>工作区</button>
   </div>
 
   <!-- 中间的媒体控制区 -->

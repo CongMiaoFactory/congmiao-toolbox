@@ -4,11 +4,16 @@ import {
   DEFAULT_WALLPAPER,
   WORKSPACE_SCHEMA_VERSION,
   clampGeometry,
+  defaultLauncherPreferences,
   defaultTimerSnapshot,
   reconcileTimers,
+  timerPreset,
+  type LauncherPreferences,
   type PersistedWorkspaceV1,
+  type RecentToolUsage,
   type TodoItem,
   type WindowGeometry,
+  type WorkspaceTemplate,
 } from './workspace';
 
 export type { ToolId } from './toolRegistry';
@@ -55,7 +60,7 @@ export function formatMeta() {
 }
 
 export class AppState {
-  appVersion = $state('0.2.8');
+  appVersion = $state('0.2.9');
   ready = $state(false);
   theme = $state<'dark' | 'light'>('light');
   bgImageUrl = $state(DEFAULT_WALLPAPER);
@@ -81,6 +86,10 @@ export class AppState {
   activeWindowId = $state<string | null>(null);
   todos = $state<TodoItem[]>([]);
   timers = $state(defaultTimerSnapshot());
+  workspaceTemplates = $state<WorkspaceTemplate[]>([]);
+  favorites = $state<ToolId[]>([]);
+  recentTools = $state<RecentToolUsage[]>([]);
+  globalShortcut = $state(defaultLauncherPreferences().globalShortcut);
 
   recentActivity = $state<ActivityEntry[]>([{
     source: 'SYSTEM', title: 'Workspace Ready', value: '等待操作', meta: formatMeta(), accent: 'teal',
@@ -99,6 +108,30 @@ export class AppState {
       this.activeNavIndex = Math.min(2, Math.max(0, workspace.desktop.activeNavIndex));
       this.todos = workspace.todos.filter((todo) => todo.text.trim()).slice(0, 500);
       this.timers = reconcileTimers(workspace.timers);
+      this.workspaceTemplates = (Array.isArray(workspace.workspaceTemplates) ? workspace.workspaceTemplates : [])
+        .filter((template) => template
+          && typeof template.id === 'string'
+          && typeof template.name === 'string'
+          && Number.isFinite(template.createdAt)
+          && Number.isFinite(template.updatedAt)
+          && (template.preferences?.theme === 'dark' || template.preferences?.theme === 'light')
+          && typeof template.preferences?.bgImageUrl === 'string'
+          && typeof template.preferences?.bgBlur === 'number'
+          && typeof template.preferences?.sidebarCollapsed === 'boolean'
+          && Array.isArray(template.desktop?.windows)
+          && !!template.timers)
+        .slice(0, 20);
+      const savedLauncher = workspace.launcher;
+      const launcher = savedLauncher && Array.isArray(savedLauncher.favorites) && Array.isArray(savedLauncher.recentTools)
+        && typeof savedLauncher.globalShortcut === 'string'
+        ? savedLauncher : defaultLauncherPreferences();
+      this.favorites = launcher.favorites.filter((id) => !!getTool(id)).slice(0, 20);
+      this.recentTools = launcher.recentTools
+        .filter((item) => !!getTool(item.id) && Number.isFinite(item.lastUsedAt) && Number.isFinite(item.useCount))
+        .sort((a, b) => b.lastUsedAt - a.lastUsedAt)
+        .slice(0, 30);
+      this.globalShortcut = ['Ctrl+Alt+Space', 'Ctrl+Shift+Space', 'Ctrl+Alt+K', 'Alt+Shift+Space'].includes(launcher.globalShortcut)
+        ? launcher.globalShortcut : defaultLauncherPreferences().globalShortcut;
       this.windows = workspace.desktop.windows.flatMap((saved) => {
         const toolId = migrateWindowToolId(saved.toolId);
         const tool = toolId ? getTool(toolId) : null;
@@ -255,6 +288,138 @@ export class AppState {
 
   markTimersChanged() { this.schedulePersist(); }
 
+  recordToolUsage(id: ToolId) {
+    const existing = this.recentTools.find((item) => item.id === id);
+    if (existing) {
+      existing.lastUsedAt = Date.now();
+      existing.useCount += 1;
+    } else {
+      this.recentTools.push({ id, lastUsedAt: Date.now(), useCount: 1 });
+    }
+    this.recentTools = [...this.recentTools]
+      .sort((a, b) => b.lastUsedAt - a.lastUsedAt)
+      .slice(0, 30);
+    this.schedulePersist();
+  }
+
+  toggleFavorite(id: ToolId) {
+    if (this.favorites.includes(id)) this.favorites = this.favorites.filter((item) => item !== id);
+    else this.favorites = [...this.favorites, id].slice(-20);
+    this.schedulePersist();
+  }
+
+  saveWorkspaceTemplate(name: string) {
+    const normalized = name.trim();
+    if (!normalized || normalized.length > 40) throw new Error('模板名称长度必须为 1 到 40 个字符');
+    if (this.workspaceTemplates.some((item) => item.name.toLowerCase() === normalized.toLowerCase())) {
+      throw new Error('已经存在同名工作区模板');
+    }
+    if (this.workspaceTemplates.length >= 20) throw new Error('最多保存 20 个工作区模板');
+    const now = Date.now();
+    const template: WorkspaceTemplate = {
+      id: crypto.randomUUID(),
+      name: normalized,
+      createdAt: now,
+      updatedAt: now,
+      preferences: {
+        theme: this.theme,
+        bgImageUrl: this.bgImageUrl,
+        bgBlur: this.bgBlur,
+        sidebarCollapsed: this.sidebarCollapsed,
+      },
+      desktop: {
+        activeNavIndex: this.activeNavIndex,
+        activeWindowId: this.activeWindowId,
+        windows: this.windows.map(({ minWidth: _minWidth, minHeight: _minHeight, title: _title, ...window }) => ({ ...window })),
+      },
+      timers: timerPreset(this.timers),
+    };
+    this.workspaceTemplates = [template, ...this.workspaceTemplates];
+    this.schedulePersist();
+    return template;
+  }
+
+  overwriteWorkspaceTemplate(id: string) {
+    const template = this.workspaceTemplates.find((item) => item.id === id);
+    if (!template) throw new Error('找不到工作区模板');
+    template.updatedAt = Date.now();
+    template.preferences = {
+      theme: this.theme,
+      bgImageUrl: this.bgImageUrl,
+      bgBlur: this.bgBlur,
+      sidebarCollapsed: this.sidebarCollapsed,
+    };
+    template.desktop = {
+      activeNavIndex: this.activeNavIndex,
+      activeWindowId: this.activeWindowId,
+      windows: this.windows.map(({ minWidth: _minWidth, minHeight: _minHeight, title: _title, ...window }) => ({ ...window })),
+    };
+    template.timers = timerPreset(this.timers);
+    this.workspaceTemplates = [...this.workspaceTemplates];
+    this.schedulePersist();
+  }
+
+  renameWorkspaceTemplate(id: string, name: string) {
+    const normalized = name.trim();
+    if (!normalized || normalized.length > 40) throw new Error('模板名称长度必须为 1 到 40 个字符');
+    if (this.workspaceTemplates.some((item) => item.id !== id && item.name.toLowerCase() === normalized.toLowerCase())) {
+      throw new Error('已经存在同名工作区模板');
+    }
+    const template = this.workspaceTemplates.find((item) => item.id === id);
+    if (!template) throw new Error('找不到工作区模板');
+    template.name = normalized;
+    template.updatedAt = Date.now();
+    this.workspaceTemplates = [...this.workspaceTemplates];
+    this.schedulePersist();
+  }
+
+  deleteWorkspaceTemplate(id: string) {
+    this.workspaceTemplates = this.workspaceTemplates.filter((item) => item.id !== id);
+    this.schedulePersist();
+  }
+
+  applyWorkspaceTemplate(id: string) {
+    const template = this.workspaceTemplates.find((item) => item.id === id);
+    if (!template) throw new Error('找不到工作区模板');
+    const viewport = this.viewport();
+    const idMap = new Map<string, string>();
+    const windows = template.desktop.windows.flatMap((saved) => {
+      const toolId = migrateWindowToolId(saved.toolId);
+      const tool = toolId ? getTool(toolId) : null;
+      if (!toolId || !tool?.defaultSize) return [];
+      const id = crypto.randomUUID();
+      idMap.set(saved.id, id);
+      const geometry = clampGeometry(saved, viewport, {
+        width: tool.defaultSize.minWidth,
+        height: tool.defaultSize.minHeight,
+      });
+      return [{
+        ...geometry,
+        id,
+        toolId,
+        title: tool.title,
+        minWidth: tool.defaultSize.minWidth,
+        minHeight: tool.defaultSize.minHeight,
+        zIndex: saved.zIndex,
+        isMinimized: saved.isMinimized,
+        isMaximized: saved.isMaximized,
+        restoreGeometry: saved.restoreGeometry,
+      } satisfies WindowData];
+    });
+    this.theme = template.preferences.theme;
+    this.bgImageUrl = template.preferences.bgImageUrl || DEFAULT_WALLPAPER;
+    this.bgBlur = Math.min(100, Math.max(0, template.preferences.bgBlur));
+    this.sidebarCollapsed = template.preferences.sidebarCollapsed;
+    this.activeNavIndex = Math.min(2, Math.max(0, template.desktop.activeNavIndex));
+    this.windows = windows;
+    this.activeWindowId = template.desktop.activeWindowId
+      ? idMap.get(template.desktop.activeWindowId) ?? null
+      : null;
+    this.timers = reconcileTimers(timerPreset(template.timers));
+    document.documentElement.setAttribute('data-theme', this.theme);
+    this.schedulePersist();
+  }
+
   schedulePersist() {
     if (!this.ready) return;
     if (this.persistTimer !== null) window.clearTimeout(this.persistTimer);
@@ -311,6 +476,12 @@ export class AppState {
       },
       todos: this.todos.map((todo) => ({ ...todo })),
       timers: JSON.parse(JSON.stringify(this.timers)),
+      workspaceTemplates: JSON.parse(JSON.stringify(this.workspaceTemplates)),
+      launcher: {
+        favorites: [...this.favorites],
+        recentTools: this.recentTools.map((item) => ({ ...item })),
+        globalShortcut: this.globalShortcut,
+      } satisfies LauncherPreferences,
     };
   }
 

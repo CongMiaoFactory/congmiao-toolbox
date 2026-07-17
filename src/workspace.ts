@@ -1,4 +1,4 @@
-import type { WindowToolId } from './toolRegistry';
+import type { ToolId, WindowToolId } from './toolRegistry';
 
 export const WORKSPACE_SCHEMA_VERSION = 1 as const;
 export const DEFAULT_WALLPAPER = 'https://images.unsplash.com/photo-1558591710-4b4a1ae0f04d?q=80&w=2574&auto=format&fit=crop';
@@ -56,6 +56,28 @@ export interface TimerSnapshot {
   pomodoro: PomodoroSnapshot;
 }
 
+export interface WorkspaceTemplate {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  preferences: PersistedWorkspaceV1['preferences'];
+  desktop: PersistedWorkspaceV1['desktop'];
+  timers: TimerSnapshot;
+}
+
+export interface RecentToolUsage {
+  id: ToolId;
+  lastUsedAt: number;
+  useCount: number;
+}
+
+export interface LauncherPreferences {
+  favorites: ToolId[];
+  recentTools: RecentToolUsage[];
+  globalShortcut: string;
+}
+
 export interface PersistedWorkspaceV1 {
   schemaVersion: typeof WORKSPACE_SCHEMA_VERSION;
   savedAt: number;
@@ -72,6 +94,23 @@ export interface PersistedWorkspaceV1 {
   };
   todos: TodoItem[];
   timers: TimerSnapshot;
+  workspaceTemplates?: WorkspaceTemplate[];
+  launcher?: LauncherPreferences;
+}
+
+export function defaultLauncherPreferences(): LauncherPreferences {
+  return { favorites: [], recentTools: [], globalShortcut: 'Ctrl+Alt+Space' };
+}
+
+export function timerPreset(snapshot: TimerSnapshot): TimerSnapshot {
+  const timers = JSON.parse(JSON.stringify(snapshot)) as TimerSnapshot;
+  timers.stopwatch.running = false;
+  timers.stopwatch.startedAt = null;
+  timers.countdown.running = false;
+  timers.countdown.targetAt = null;
+  timers.pomodoro.running = false;
+  timers.pomodoro.targetAt = null;
+  return timers;
 }
 
 export function defaultTimerSnapshot(): TimerSnapshot {
