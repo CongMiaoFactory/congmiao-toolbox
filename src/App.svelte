@@ -4,19 +4,9 @@
   import CommandPalette from './components/CommandPalette.svelte';
   import SystemMonitorTile from './components/SystemMonitorTile.svelte';
   import PeekPCWidget from './components/PeekPCWidget.svelte';
-  import JsonFormatter from './components/JsonFormatter.svelte';
-  import PythonFormatter from './components/PythonFormatter.svelte';
-  import EncoderTool from './components/EncoderTool.svelte';
-  import ColorPickerTool from './components/ColorPickerTool.svelte';
-  import HashTool from './components/HashTool.svelte';
-  import ImageConverterTool from './components/ImageConverterTool.svelte';
-  import TimerTool from './components/TimerTool.svelte';
-  import TranslatorTool from './components/TranslatorTool.svelte';
-  import PeekPCTool from './components/PeekPCTool.svelte';
   import ScreenTimeView from './components/ScreenTimeView.svelte';
   import HeartRateWidget from './components/HeartRateWidget.svelte';
   import HROverlay from './components/HROverlay.svelte';
-  import LuckyWheelTool from './components/LuckyWheelTool.svelte';
 
   // Desktop widgets
   import ClockWidget from './components/ClockWidget.svelte';
@@ -30,16 +20,24 @@
   import { appState } from './state.svelte';
   import { runTool } from './tools';
   import { onMount } from 'svelte';
+  import { windowTools, type WindowToolId } from './toolRegistry';
+  import { windowComponents } from './windowComponents';
 
   let isOverlay = $state(false);
+
+  $effect(() => {
+    if (!appState.ready) return;
+    appState.activeNavIndex;
+    appState.sidebarCollapsed;
+    appState.schedulePersist();
+  });
 
   onMount(() => {
     if (window.location.hash === '#/hr-overlay') {
       isOverlay = true;
       return;
     }
-
-    document.documentElement.setAttribute('data-theme', appState.theme);
+    let mounted = true;
 
     const handleKeydown = (event: KeyboardEvent) => {
       const withMeta = event.metaKey || event.ctrlKey;
@@ -50,19 +48,31 @@
       }
       if (withMeta && event.key.toLowerCase() === 't') {
         event.preventDefault();
-        runTool('timestamp');
+        runTool('timer');
       }
       if (withMeta && event.key.toLowerCase() === 'j') {
         event.preventDefault();
-        runTool('json-format');
+        runTool('json');
       }
     };
 
-    window.addEventListener('keydown', handleKeydown);
-    return () => window.removeEventListener('keydown', handleKeydown);
+    const handleBeforeUnload = () => void appState.persist();
+    const handleResize = () => appState.reconcileWindowBounds();
+    void appState.hydrate().then(() => {
+      if (!mounted) return;
+      window.addEventListener('keydown', handleKeydown);
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      window.addEventListener('resize', handleResize);
+    });
+    return () => {
+      mounted = false;
+      window.removeEventListener('keydown', handleKeydown);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('resize', handleResize);
+    };
   });
 
-  function launchToolFromDirectory(id: any) {
+  function launchToolFromDirectory(id: WindowToolId) {
     appState.openFloatingWindow(id);
     appState.activeNavIndex = 0; // Go back to desktop
   }
@@ -70,6 +80,8 @@
 
 {#if isOverlay}
   <HROverlay />
+{:else if !appState.ready}
+  <div class="workspace-loading"><span class="material-symbols-rounded">progress_activity</span>正在恢复工作区…</div>
 {:else}
 <div class="app-layout desktop-mode" style="--bg-image: url('{appState.bgImageUrl}'); --bg-blur: {appState.bgBlur}px;">
   
@@ -109,46 +121,12 @@
         </div>
         <div class="tool-directory">
           <div class="dir-grid">
-            <button class="tool-card" onclick={() => launchToolFromDirectory('json-format')}>
-              <div class="icon orange"><span class="material-symbols-rounded">data_object</span></div>
-              <div class="info"><h4>JSON 格式化</h4><p>美化 JSON 文本并查错</p></div>
-            </button>
-            <button class="tool-card" onclick={() => launchToolFromDirectory('python')}>
-              <div class="icon blue"><span class="material-symbols-rounded">data_object</span></div>
-              <div class="info"><h4>Python 工具集</h4><p>代码极速排版与字典转换</p></div>
-            </button>
-            <button class="tool-card" onclick={() => launchToolFromDirectory('encoder')}>
-              <div class="icon green"><span class="material-symbols-rounded">swap_horiz</span></div>
-              <div class="info"><h4>万能编码转换</h4><p>Base64, URL, 与 Unicode 互转</p></div>
-            </button>
-            <button class="tool-card" onclick={() => launchToolFromDirectory('color')}>
-              <div class="icon pink"><span class="material-symbols-rounded">colorize</span></div>
-              <div class="info"><h4>深层取色器</h4><p>系统级屏幕取色工具 RGB/HEX</p></div>
-            </button>
-            <button class="tool-card" onclick={() => launchToolFromDirectory('hash-check')}>
-              <div class="icon purple"><span class="material-symbols-rounded">fingerprint</span></div>
-              <div class="info"><h4>哈希校验中心</h4><p>极速并发计算 MD5, SHA 系列</p></div>
-            </button>
-            <button class="tool-card" onclick={() => launchToolFromDirectory('image')}>
-              <div class="icon orange"><span class="material-symbols-rounded">imagesmode</span></div>
-              <div class="info"><h4>图片格式工厂</h4><p>离线高品质转存 PNG/JPG/WEBP</p></div>
-            </button>
-            <button class="tool-card" onclick={() => launchToolFromDirectory('timestamp')}>
-              <div class="icon red"><span class="material-symbols-rounded">timer</span></div>
-              <div class="info"><h4>生产力时钟</h4><p>支持计圈的秒表与倒计时器</p></div>
-            </button>
-            <button class="tool-card" onclick={() => launchToolFromDirectory('translator')}>
-              <div class="icon teal"><span class="material-symbols-rounded">translate</span></div>
-              <div class="info"><h4>多语互译机</h4><p>六国语言极速免费互译助手</p></div>
-            </button>
-            <button class="tool-card" onclick={() => launchToolFromDirectory('peek_pc')}>
-              <div class="icon blue"><span class="material-symbols-rounded">desktop_windows</span></div>
-              <div class="info"><h4>Peek 远程监视</h4><p>局域网跨屏监视硬件状态</p></div>
-            </button>
-            <button class="tool-card" onclick={() => launchToolFromDirectory('lucky-wheel')}>
-              <div class="icon purple"><span class="material-symbols-rounded">cyclone</span></div>
-              <div class="info"><h4>幸运大转盘</h4><p>多级随机决策神器</p></div>
-            </button>
+            {#each windowTools.filter((tool) => tool.showInLaunchpad) as tool}
+              <button class="tool-card" onclick={() => launchToolFromDirectory(tool.id)}>
+                <div class="icon {tool.accent}"><span class="material-symbols-rounded">{tool.icon}</span></div>
+                <div class="info"><h4>{tool.title}</h4><p>{tool.description}</p></div>
+              </button>
+            {/each}
           </div>
         </div>
       </div>
@@ -168,7 +146,8 @@
 
     <!-- 窗口层 (始终悬浮在桌面和小组件之上) -->
     <div class="windows-layer">
-      {#each appState.windows as win (win.id)}
+      {#each appState.windows.filter((window) => !window.isMinimized) as win (win.id)}
+        {@const ToolComponent = windowComponents[win.toolId]}
         <FloatingWindow 
           windowId={win.id}
           toolId={win.toolId}
@@ -177,33 +156,17 @@
           y={win.y}
           width={win.width}
           height={win.height}
+          minWidth={win.minWidth}
+          minHeight={win.minHeight}
+          isMaximized={win.isMaximized}
           zIndex={win.zIndex}
           onClose={() => appState.closeWindow(win.id)}
           onFocus={() => appState.focusWindow(win.id)}
+          onMinimize={() => appState.minimizeWindow(win.id)}
+          onMaximize={() => appState.toggleWindowMaximize(win.id)}
+          onGeometryChange={(geometry) => appState.updateWindowGeometry(win.id, geometry)}
         >
-          {#if win.toolId === 'json' || win.toolId === 'json-format'}
-            <JsonFormatter />
-          {:else if win.toolId === 'python'}
-            <PythonFormatter />
-          {:else if win.toolId === 'encoder'}
-            <EncoderTool />
-          {:else if win.toolId === 'color'}
-            <ColorPickerTool />
-          {:else if win.toolId === 'hash' || win.toolId === 'hash-check'}
-            <HashTool />
-          {:else if win.toolId === 'image'}
-            <ImageConverterTool />
-          {:else if win.toolId === 'timer' || win.toolId === 'timestamp'}
-            <TimerTool />
-          {:else if win.toolId === 'translator'}
-            <TranslatorTool />
-          {:else if win.toolId === 'peek_pc'}
-            <PeekPCTool />
-          {:else if win.toolId === 'lucky-wheel'}
-            <LuckyWheelTool />
-          {:else}
-            <div style="padding: 20px;">Tool {win.toolId} not implemented yet.</div>
-          {/if}
+          <ToolComponent />
         </FloatingWindow>
       {/each}
     </div>
@@ -226,6 +189,20 @@
 {/if}
 
 <style>
+  .workspace-loading {
+    display: flex;
+    width: 100vw;
+    height: 100vh;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--text-secondary);
+    background: var(--bg-app);
+  }
+
+  .workspace-loading span { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
   .app-layout {
     display: flex;
     flex-direction: column;

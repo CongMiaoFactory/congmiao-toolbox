@@ -1,22 +1,30 @@
 <script lang="ts">
   import { appState, settingsGroups } from '../state.svelte';
+  import { encodeWallpaper } from '../persistence';
   
   let tempBgUrl = $state(appState.bgImageUrl);
   let tempBgBlur = $state(appState.bgBlur);
   let fileInput: HTMLInputElement;
+  let wallpaperMessage = $state('');
 
   function saveBg() {
-    appState.bgImageUrl = tempBgUrl;
-    appState.bgBlur = tempBgBlur;
+    appState.setAppearance({ bgImageUrl: tempBgUrl, bgBlur: tempBgBlur });
+    wallpaperMessage = '外观设置已保存';
   }
 
-  function handleFileSelect(event: Event) {
+  async function handleFileSelect(event: Event) {
     const target = event.target as HTMLInputElement;
     if (target.files && target.files.length > 0) {
-      const file = target.files[0];
-      const objectUrl = URL.createObjectURL(file);
-      tempBgUrl = objectUrl;
-      appState.bgImageUrl = objectUrl;
+      try {
+        wallpaperMessage = '正在处理图片…';
+        tempBgUrl = await encodeWallpaper(target.files[0]);
+        appState.setAppearance({ bgImageUrl: tempBgUrl });
+        wallpaperMessage = '本地壁纸已保存';
+      } catch (error) {
+        wallpaperMessage = error instanceof Error ? error.message : '壁纸处理失败';
+      } finally {
+        target.value = '';
+      }
     }
   }
 </script>
@@ -39,6 +47,7 @@
             <span class="setting-title">主题模式</span>
             <span class="setting-desc">切换亮色或暗色模式</span>
           </div>
+          {#if wallpaperMessage}<span class="wallpaper-message">{wallpaperMessage}</span>{/if}
           <button class="action-btn" onclick={() => appState.toggleTheme()}>
             <span class="material-symbols-rounded">{appState.theme === 'dark' ? 'light_mode' : 'dark_mode'}</span>
             {appState.theme === 'dark' ? '切换为亮色' : '切换为暗色'}
@@ -72,7 +81,7 @@
             <span class="setting-desc">调整桌面背景的毛玻璃模糊程度</span>
           </div>
           <div class="input-group slider-group">
-            <input type="range" min="0" max="100" bind:value={tempBgBlur} onchange={saveBg} />
+            <input type="range" min="0" max="100" bind:value={tempBgBlur} oninput={saveBg} />
             <span class="blur-value">{tempBgBlur}px</span>
           </div>
         </div>
@@ -238,6 +247,11 @@
   .setting-desc {
     font-size: 13px;
     color: var(--text-secondary, #666);
+  }
+
+  .wallpaper-message {
+    color: var(--text-secondary, #666);
+    font-size: 12px;
   }
 
   :global([data-theme="dark"]) .setting-title { color: #eee; }

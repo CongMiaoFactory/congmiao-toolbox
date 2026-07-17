@@ -1,4 +1,6 @@
+use std::fs;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use sysinfo::System;
 use tauri::Manager;
 
@@ -70,6 +72,27 @@ fn get_system_stats(state: tauri::State<'_, AppState>) -> SystemStats {
         memory_used: sys.used_memory() / 1024 / 1024,
         memory_total: sys.total_memory() / 1024 / 1024,
     }
+}
+
+#[tauri::command]
+fn recover_workspace_store(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let workspace_path = app_data_dir.join("workspace.json");
+    if !workspace_path.exists() {
+        return Ok(None);
+    }
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_secs();
+    let backup_path = app_data_dir.join(format!("workspace.corrupt.{timestamp}.json"));
+    fs::copy(&workspace_path, &backup_path).map_err(|error| error.to_string())?;
+    fs::remove_file(&workspace_path).map_err(|error| error.to_string())?;
+    Ok(Some(backup_path.to_string_lossy().to_string()))
 }
 
 #[tauri::command]
@@ -214,11 +237,13 @@ pub fn run() {
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .manage(AppState {
             sys: Mutex::new(sys),
         })
         .invoke_handler(tauri::generate_handler![
             get_system_stats,
+            recover_workspace_store,
             start_peek_server,
             stop_peek_server,
             get_peek_status,

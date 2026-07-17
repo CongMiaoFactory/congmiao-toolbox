@@ -9,6 +9,7 @@ Congmiao Toolbox is a local desktop toolbox built with Tauri 2, Svelte 5, and Bu
 - Screen time tracking
 - Heart rate overlay / widget support
 - In-app updater and launch-at-login support
+- Persistent desktop workspace, window layout, todos, timers, and wallpaper
 
 ## Stack
 
@@ -31,6 +32,14 @@ bun run tauri:dev
 bun run tauri:build
 ```
 
+## Validation
+
+```bash
+bun run check
+bun run test
+cd src-tauri && cargo test --all-targets
+```
+
 ## Release Workflow
 
 Version releases are published from GitHub Actions when you push a tag in the form `v*`.
@@ -38,11 +47,11 @@ Version releases are published from GitHub Actions when you push a tag in the fo
 Prepare the version locally, commit it, and then create the matching tag:
 
 ```bash
-bun run version:sync 0.2.3
+bun run version:sync 0.2.5
 git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
-git commit -m "chore: release v0.2.3"
-git tag v0.2.3
-git push origin main v0.2.3
+git commit -m "chore: release v0.2.5"
+git tag v0.2.5
+git push origin main v0.2.5
 ```
 
 The release workflow also synchronizes the build version from the tag as a final safeguard, so a

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { appState, commands } from '../state.svelte';
+  import { appState } from '../state.svelte';
+  import { commandTools } from '../toolRegistry';
   import { runTool } from '../tools';
   import { tick, onMount } from 'svelte';
 
@@ -23,9 +24,9 @@
 
   let filteredCommands = $derived.by(() => {
     const query = appState.commandQuery.trim().toLowerCase();
-    const results = commands
+    const results = commandTools
       .map((command) => {
-        const haystack = [command.title, command.subtitle, command.shortcut, ...command.keywords].join(' ').toLowerCase();
+        const haystack = [command.title, command.description, command.shortcut ?? '', ...command.keywords].join(' ').toLowerCase();
         return { command, score: fuzzyScore(query, haystack) };
       })
       .filter((entry) => entry.score >= 0)
@@ -50,7 +51,7 @@
     }
   });
 
-  async function activateCommand(command: typeof commands[0] | undefined) {
+  async function activateCommand(command: typeof commandTools[0] | undefined) {
     if (!command) return;
     appState.commandOpen = false;
     appState.commandQuery = '';
@@ -114,9 +115,9 @@
             </div>
             <div class="result-text">
               <span class="title">{cmd.title}</span>
-              <span class="subtitle">{cmd.subtitle}</span>
+              <span class="subtitle">{cmd.description}</span>
             </div>
-            <div class="cmd-shortcut">{cmd.shortcut}</div>
+            {#if cmd.shortcut}<div class="cmd-shortcut">{cmd.shortcut}</div>{/if}
           </button>
         {/each}
         {#if filteredCommands.length === 0}

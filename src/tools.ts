@@ -1,4 +1,5 @@
-import { appState, type ToolId } from './state.svelte';
+import { appState } from './state.svelte';
+import { getTool, type ToolId } from './toolRegistry';
 
 export async function copyText(text: string) {
   try {
@@ -223,6 +224,19 @@ export function runComingSoon(id: ToolId, title: string) {
 }
 
 export async function runTool(id: ToolId) {
+  const tool = getTool(id);
+  if (tool?.kind === 'window') {
+    appState.openFloatingWindow(id);
+    appState.activeNavIndex = 0;
+    appState.schedulePersist();
+    appState.addActivity({ source: 'SYSTEM', title: tool.title, value: '已打开工具窗口', accent: 'blue' });
+    return;
+  }
+  if (tool?.kind === 'planned') {
+    runComingSoon(id, tool.title);
+    return;
+  }
+
   switch (id) {
     case 'timestamp':
       await runTimestampFromClock();
@@ -239,24 +253,7 @@ export async function runTool(id: ToolId) {
     case 'hash-check':
       await runHashCheck();
       break;
-    case 'batch-rename':
-      runComingSoon(id, 'Batch Rename');
-      break;
-    case 'sort-rule':
-      runComingSoon(id, 'Sort by Rule');
-      break;
-    case 'duplicate-scan':
-      runComingSoon(id, 'Duplicate Scan');
-      break;
-    case 'lucky-wheel':
-      appState.openFloatingWindow('lucky-wheel');
-      appState.activeNavIndex = 0;
-      appState.addActivity({
-        source: 'TEXT',
-        title: 'Lucky Wheel',
-        value: '已打开幸运大转盘',
-        accent: 'blue',
-      });
+    default:
       break;
   }
 }

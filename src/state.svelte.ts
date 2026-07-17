@@ -1,40 +1,20 @@
-export type NavItem = {
-  title: string;
-  caption: string;
-  icon: string;
-};
+import { getTool, migrateWindowToolId, type ToolId, type WindowToolId } from './toolRegistry';
+import { loadWorkspace, saveWorkspace } from './persistence';
+import {
+  DEFAULT_WALLPAPER,
+  WORKSPACE_SCHEMA_VERSION,
+  clampGeometry,
+  defaultTimerSnapshot,
+  reconcileTimers,
+  type PersistedWorkspaceV1,
+  type TodoItem,
+  type WindowGeometry,
+} from './workspace';
 
-export type ToolId =
-  | 'timestamp'
-  | 'json-format'
-  | 'url-encode'
-  | 'base64'
-  | 'hash-check'
-  | 'batch-rename'
-  | 'sort-rule'
-  | 'duplicate-scan'
-  | 'lucky-wheel'
-  | 'json'
-  | 'python'
-  | 'encoder'
-  | 'color'
-  | 'hash'
-  | 'image'
-  | 'timer'
-  | 'translator'
-  | 'peek_pc';
+export type { ToolId } from './toolRegistry';
+export type { TodoItem } from './workspace';
 
-
-export type ToolCommand = {
-  id: ToolId;
-  title: string;
-  subtitle: string;
-  shortcut: string;
-  icon: string;
-  accent: 'teal' | 'blue';
-  keywords: string[];
-};
-
+export type NavItem = { title: string; caption: string; icon: string };
 export type ActivityEntry = {
   source: 'TEXT' | 'FILE' | 'SYSTEM';
   title: string;
@@ -42,22 +22,19 @@ export type ActivityEntry = {
   meta: string;
   accent: 'teal' | 'blue';
 };
+export type SettingsGroup = { title: string; items: string[] };
 
-export type SettingsGroup = {
+export interface WindowData extends WindowGeometry {
+  id: string;
+  toolId: WindowToolId;
   title: string;
-  items: string[];
-};
-
-export function formatMeta() {
-  return new Date().toLocaleTimeString('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
+  minWidth: number;
+  minHeight: number;
+  isMinimized: boolean;
+  isMaximized: boolean;
+  restoreGeometry: WindowGeometry | null;
+  zIndex: number;
 }
-
-
 
 export const navItems: NavItem[] = [
   { title: '仪表盘', caption: '添加小组件 / 快捷跳转', icon: 'dashboard' },
@@ -65,114 +42,23 @@ export const navItems: NavItem[] = [
   { title: '使用时长', caption: '应用屏幕使用时间', icon: 'schedule' },
 ];
 
-export const commands: ToolCommand[] = [
-  {
-    id: 'timestamp',
-    title: 'Timestamp Convert',
-    subtitle: '复制当前 Unix 时间戳或处理拖拽文件',
-    shortcut: 'Cmd/Ctrl+T',
-    icon: 'schedule',
-    accent: 'teal',
-    keywords: ['timestamp', 'unix', 'time', 'convert', '日期', '时间戳'],
-  },
-  {
-    id: 'json-format',
-    title: 'JSON Format',
-    subtitle: '读取剪贴板 JSON 并格式化复制',
-    shortcut: 'Cmd/Ctrl+J',
-    icon: 'data_object',
-    accent: 'teal',
-    keywords: ['json', 'format', 'pretty', 'clipboard', '格式化'],
-  },
-  {
-    id: 'url-encode',
-    title: 'URL Encode',
-    subtitle: '编码剪贴板中的 URL 文本',
-    shortcut: 'Cmd/Ctrl+U',
-    icon: 'link',
-    accent: 'teal',
-    keywords: ['url', 'encode', 'query', 'uri'],
-  },
-  {
-    id: 'base64',
-    title: 'Base64',
-    subtitle: '对剪贴板文本进行 Base64 编码',
-    shortcut: 'Cmd/Ctrl+B',
-    icon: 'encrypted',
-    accent: 'teal',
-    keywords: ['base64', 'encode', 'text'],
-  },
-  {
-    id: 'hash-check',
-    title: 'Hash Check',
-    subtitle: '计算剪贴板文本的 SHA-256',
-    shortcut: 'Cmd/Ctrl+H',
-    icon: 'fingerprint',
-    accent: 'blue',
-    keywords: ['hash', 'sha', 'sha256', 'checksum'],
-  },
-  {
-    id: 'batch-rename',
-    title: 'Batch Rename',
-    subtitle: '文件重命名工作台入口',
-    shortcut: 'Cmd/Ctrl+R',
-    icon: 'edit_square',
-    accent: 'blue',
-    keywords: ['rename', 'file', 'batch'],
-  },
-  {
-    id: 'sort-rule',
-    title: 'Sort by Rule',
-    subtitle: '按规则整理文件的入口',
-    shortcut: 'Cmd/Ctrl+S',
-    icon: 'sort',
-    accent: 'blue',
-    keywords: ['sort', 'rule', 'file', 'organize'],
-  },
-  {
-    id: 'duplicate-scan',
-    title: 'Duplicate Scan',
-    subtitle: '重复文件扫描入口',
-    shortcut: 'Cmd/Ctrl+D',
-    icon: 'content_copy',
-    accent: 'blue',
-    keywords: ['duplicate', 'scan', 'file'],
-  },
-  {
-    id: 'lucky-wheel',
-    title: 'Lucky Wheel',
-    subtitle: '多层大转盘，支持大类/小类多级随机',
-    shortcut: 'Cmd/Ctrl+L',
-    icon: 'cyclone',
-    accent: 'blue',
-    keywords: ['lucky', 'wheel', 'random', 'roll', '转盘', '幸运'],
-  },
-];
-
-
 export const settingsGroups: SettingsGroup[] = [
-  { title: 'Stack', items: ['Svelte 5', 'Tailwind-free Custom UI', 'Tauri 2', 'Bun'] },
-  { title: 'Automation', items: ['Cmd/Ctrl+K', 'Clipboard Watch', 'Drag to Run'] },
-  { title: 'Window', items: ['Single Page', 'Collapsible Sidebar', 'No Scroll'] },
+  { title: 'Stack', items: ['Svelte 5', 'Tauri 2', 'Bun', 'Rust'] },
+  { title: 'Workspace', items: ['持久化窗口', '计时恢复', '本地壁纸'] },
+  { title: 'Automation', items: ['Cmd/Ctrl+K', 'Clipboard Actions', 'Auto Update'] },
 ];
 
-export type WindowData = {
-  id: string;
-  toolId: ToolId;
-  title: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  isMinimized: boolean;
-  isMaximized: boolean;
-  zIndex: number;
-};
+export function formatMeta() {
+  return new Date().toLocaleTimeString('zh-CN', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  });
+}
 
 export class AppState {
-  appVersion = $state('0.1.0');
+  appVersion = $state('0.2.5');
+  ready = $state(false);
   theme = $state<'dark' | 'light'>('light');
-  bgImageUrl = $state('https://images.unsplash.com/photo-1558591710-4b4a1ae0f04d?q=80&w=2574&auto=format&fit=crop');
+  bgImageUrl = $state(DEFAULT_WALLPAPER);
   bgBlur = $state(0);
   sidebarCollapsed = $state(true);
   activeNavIndex = $state(0);
@@ -191,92 +77,202 @@ export class AppState {
   jsonFlash = $state(false);
   activeToolPulse = $state<ToolId | null>(null);
 
-  recentActivity = $state<ActivityEntry[]>([
-    {
-      source: 'SYSTEM',
-      title: 'Workspace Ready',
-      value: '等待零点击交互',
-      meta: formatMeta(),
-      accent: 'teal',
-    },
-    {
-      source: 'TEXT',
-      title: 'JSON Watch',
-      value: '监听剪贴板内容',
-      meta: formatMeta(),
-      accent: 'teal',
-    },
-    {
-      source: 'FILE',
-      title: 'Drop to Run',
-      value: '拖拽文件到 Timestamp',
-      meta: formatMeta(),
-      accent: 'blue',
-    },
-  ]);
-
   windows = $state<WindowData[]>([]);
   activeWindowId = $state<string | null>(null);
+  todos = $state<TodoItem[]>([]);
+  timers = $state(defaultTimerSnapshot());
+
+  recentActivity = $state<ActivityEntry[]>([{
+    source: 'SYSTEM', title: 'Workspace Ready', value: '等待操作', meta: formatMeta(), accent: 'teal',
+  }]);
+
+  private persistTimer: number | null = null;
+  private persistQueue: Promise<void> = Promise.resolve();
+
+  async hydrate(viewport = this.viewport()) {
+    const workspace = await loadWorkspace();
+    if (workspace) {
+      this.theme = workspace.preferences.theme;
+      this.bgImageUrl = workspace.preferences.bgImageUrl || DEFAULT_WALLPAPER;
+      this.bgBlur = Math.min(100, Math.max(0, workspace.preferences.bgBlur));
+      this.sidebarCollapsed = workspace.preferences.sidebarCollapsed;
+      this.activeNavIndex = Math.min(2, Math.max(0, workspace.desktop.activeNavIndex));
+      this.todos = workspace.todos.filter((todo) => todo.text.trim()).slice(0, 500);
+      this.timers = reconcileTimers(workspace.timers);
+      this.windows = workspace.desktop.windows.flatMap((saved) => {
+        const toolId = migrateWindowToolId(saved.toolId);
+        const tool = toolId ? getTool(toolId) : null;
+        if (!toolId || !tool?.defaultSize) return [];
+        const geometry = clampGeometry(saved, viewport, {
+          width: tool.defaultSize.minWidth,
+          height: tool.defaultSize.minHeight,
+        });
+        return [{
+          ...geometry,
+          id: saved.id || crypto.randomUUID(),
+          toolId,
+          title: tool.title,
+          minWidth: tool.defaultSize.minWidth,
+          minHeight: tool.defaultSize.minHeight,
+          zIndex: saved.zIndex,
+          isMinimized: saved.isMinimized,
+          isMaximized: saved.isMaximized,
+          restoreGeometry: saved.restoreGeometry,
+        }];
+      });
+      this.activeWindowId = this.windows.some((item) => item.id === workspace.desktop.activeWindowId)
+        ? workspace.desktop.activeWindowId : null;
+    }
+    document.documentElement.setAttribute('data-theme', this.theme);
+    this.ready = true;
+  }
 
   openFloatingWindow(toolId: ToolId | string) {
-    let title = '工具';
-    const cmd = commands.find(c => c.id === toolId);
-    if (cmd) {
-      title = cmd.title;
-    } else {
-      // 补充缺失的 title
-      const fallbackTitles: Record<string, string> = {
-        'json': 'JSON 格式化',
-        'python': 'Python 工具集',
-        'encoder': '万能编码转换',
-        'color': '深层取色器',
-        'hash': '哈希校验',
-        'image': '图片格式工厂',
-        'timer': '生产力时钟',
-        'translator': '多语互译机',
-        'peek_pc': 'Peek 远程监视',
-        'lucky-wheel': '幸运大转盘'
-      };
-      if (fallbackTitles[toolId]) title = fallbackTitles[toolId];
-    }
-    
-    const existing = this.windows.find(w => w.toolId === toolId);
+    const windowToolId = migrateWindowToolId(toolId);
+    const tool = windowToolId ? getTool(windowToolId) : null;
+    if (!windowToolId || !tool?.defaultSize) return;
+    const existing = this.windows.find((window) => window.toolId === windowToolId);
     if (existing) {
-      this.focusWindow(existing.id);
+      this.restoreWindow(existing.id);
       return;
     }
 
+    const viewport = this.viewport();
+    const offset = (this.windows.length % 8) * 28;
+    const geometry = clampGeometry({
+      x: 110 + offset,
+      y: 60 + offset,
+      width: tool.defaultSize.width,
+      height: tool.defaultSize.height,
+    }, viewport, { width: tool.defaultSize.minWidth, height: tool.defaultSize.minHeight });
     const id = crypto.randomUUID();
-    const newWindow: WindowData = {
-      id,
-      toolId: toolId as ToolId,
-      title,
-      x: 150 + this.windows.length * 30,
-      y: 100 + this.windows.length * 30,
-      width: 900,
-      height: 650,
-      isMinimized: false,
-      isMaximized: false,
-      zIndex: this.windows.length + 10,
-    };
-    this.windows.push(newWindow);
+    this.windows.push({
+      ...geometry, id, toolId: windowToolId, title: tool.title,
+      minWidth: tool.defaultSize.minWidth, minHeight: tool.defaultSize.minHeight,
+      isMinimized: false, isMaximized: false, restoreGeometry: null,
+      zIndex: Math.max(9, ...this.windows.map((window) => window.zIndex)) + 1,
+    });
     this.focusWindow(id);
   }
 
   closeWindow(id: string) {
-    this.windows = this.windows.filter(w => w.id !== id);
-    if (this.activeWindowId === id) {
-      this.activeWindowId = null;
-    }
+    this.windows = this.windows.filter((window) => window.id !== id);
+    if (this.activeWindowId === id) this.activeWindowId = null;
+    this.schedulePersist();
   }
 
   focusWindow(id: string) {
+    const window = this.windows.find((item) => item.id === id);
+    if (!window) return;
+    window.isMinimized = false;
+    window.zIndex = Math.max(9, ...this.windows.map((item) => item.zIndex)) + 1;
     this.activeWindowId = id;
-    const maxZIndex = Math.max(0, ...this.windows.map(w => w.zIndex));
-    const win = this.windows.find(w => w.id === id);
-    if (win) {
-      win.zIndex = maxZIndex + 1;
+    this.schedulePersist();
+  }
+
+  minimizeWindow(id: string) {
+    const window = this.windows.find((item) => item.id === id);
+    if (!window) return;
+    window.isMinimized = true;
+    if (this.activeWindowId === id) this.activeWindowId = null;
+    this.schedulePersist();
+  }
+
+  restoreWindow(id: string) {
+    this.focusWindow(id);
+  }
+
+  updateWindowGeometry(id: string, geometry: WindowGeometry) {
+    const window = this.windows.find((item) => item.id === id);
+    if (!window || window.isMaximized) return;
+    Object.assign(window, clampGeometry(geometry, this.viewport(), {
+      width: window.minWidth, height: window.minHeight,
+    }));
+    this.schedulePersist();
+  }
+
+  reconcileWindowBounds() {
+    const viewport = this.viewport();
+    for (const window of this.windows) {
+      if (window.isMaximized) {
+        Object.assign(window, { x: 0, y: 0, width: viewport.width, height: viewport.height });
+      } else {
+        Object.assign(window, clampGeometry(window, viewport, {
+          width: window.minWidth, height: window.minHeight,
+        }));
+      }
     }
+    this.schedulePersist();
+  }
+
+  toggleWindowMaximize(id: string) {
+    const window = this.windows.find((item) => item.id === id);
+    if (!window) return;
+    if (window.isMaximized && window.restoreGeometry) {
+      Object.assign(window, clampGeometry(window.restoreGeometry, this.viewport(), {
+        width: window.minWidth, height: window.minHeight,
+      }));
+      window.restoreGeometry = null;
+      window.isMaximized = false;
+    } else {
+      window.restoreGeometry = { x: window.x, y: window.y, width: window.width, height: window.height };
+      const viewport = this.viewport();
+      Object.assign(window, { x: 0, y: 0, width: viewport.width, height: viewport.height });
+      window.isMaximized = true;
+    }
+    this.focusWindow(id);
+  }
+
+  addTodo(text: string) {
+    const value = text.trim();
+    if (!value || this.todos.length >= 500) return;
+    this.todos.push({ id: crypto.randomUUID(), text: value, done: false });
+    this.schedulePersist();
+  }
+
+  toggleTodo(id: string) {
+    const todo = this.todos.find((item) => item.id === id);
+    if (todo) todo.done = !todo.done;
+    this.schedulePersist();
+  }
+
+  deleteTodo(id: string) {
+    this.todos = this.todos.filter((todo) => todo.id !== id);
+    this.schedulePersist();
+  }
+
+  setAppearance(values: { bgImageUrl?: string; bgBlur?: number }) {
+    if (values.bgImageUrl !== undefined) this.bgImageUrl = values.bgImageUrl;
+    if (values.bgBlur !== undefined) this.bgBlur = Math.min(100, Math.max(0, values.bgBlur));
+    this.schedulePersist();
+  }
+
+  toggleTheme() {
+    this.theme = this.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', this.theme);
+    this.schedulePersist();
+  }
+
+  markTimersChanged() { this.schedulePersist(); }
+
+  schedulePersist() {
+    if (!this.ready) return;
+    if (this.persistTimer !== null) window.clearTimeout(this.persistTimer);
+    this.persistTimer = window.setTimeout(() => void this.persist(), 250);
+  }
+
+  persist() {
+    if (!this.ready) return this.persistQueue;
+    if (this.persistTimer !== null) {
+      window.clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
+    const snapshot = this.snapshot();
+    this.persistQueue = this.persistQueue
+      .catch(() => undefined)
+      .then(() => saveWorkspace(snapshot))
+      .catch((error) => console.error('Failed to persist workspace', error));
+    return this.persistQueue;
   }
 
   addActivity(entry: Omit<ActivityEntry, 'meta'>) {
@@ -285,32 +281,44 @@ export class AppState {
 
   pulseTool(id: ToolId) {
     this.activeToolPulse = id;
-    window.setTimeout(() => {
-      if (this.activeToolPulse === id) {
-        this.activeToolPulse = null;
-      }
-    }, 900);
+    window.setTimeout(() => { if (this.activeToolPulse === id) this.activeToolPulse = null; }, 900);
   }
 
   flashTimestampTile() {
     this.timestampFlash = true;
     this.pulseTool('timestamp');
-    window.setTimeout(() => {
-      this.timestampFlash = false;
-    }, 700);
+    window.setTimeout(() => { this.timestampFlash = false; }, 700);
   }
 
   flashJsonTile() {
     this.jsonFlash = true;
     this.pulseTool('json-format');
-    window.setTimeout(() => {
-      this.jsonFlash = false;
-    }, 900);
+    window.setTimeout(() => { this.jsonFlash = false; }, 900);
   }
 
-  toggleTheme() {
-    this.theme = this.theme === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', this.theme);
+  private snapshot(): PersistedWorkspaceV1 {
+    return {
+      schemaVersion: WORKSPACE_SCHEMA_VERSION,
+      savedAt: Date.now(),
+      preferences: {
+        theme: this.theme, bgImageUrl: this.bgImageUrl,
+        bgBlur: this.bgBlur, sidebarCollapsed: this.sidebarCollapsed,
+      },
+      desktop: {
+        activeNavIndex: this.activeNavIndex,
+        activeWindowId: this.activeWindowId,
+        windows: this.windows.map(({ minWidth: _minWidth, minHeight: _minHeight, title: _title, ...window }) => ({ ...window })),
+      },
+      todos: this.todos.map((todo) => ({ ...todo })),
+      timers: JSON.parse(JSON.stringify(this.timers)),
+    };
+  }
+
+  private viewport() {
+    return {
+      width: Math.max(480, typeof window === 'undefined' ? 1366 : window.innerWidth),
+      height: Math.max(360, (typeof window === 'undefined' ? 860 : window.innerHeight) - 132),
+    };
   }
 }
 

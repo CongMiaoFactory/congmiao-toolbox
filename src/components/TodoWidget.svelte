@@ -1,45 +1,32 @@
 <script lang="ts">
-  type Todo = {
-    id: string;
-    text: string;
-    done: boolean;
-  };
+  import { appState } from '../state.svelte';
 
-  let todos = $state<Todo[]>([
-    { id: '1', text: '完成重构为桌面形态', done: false },
-    { id: '2', text: '测试各个小组件', done: false }
-  ]);
   let newTodoText = $state('');
 
   function addTodo(e: KeyboardEvent) {
     if (e.key === 'Enter' && newTodoText.trim()) {
-      todos.push({
-        id: crypto.randomUUID(),
-        text: newTodoText.trim(),
-        done: false
-      });
+      appState.addTodo(newTodoText);
       newTodoText = '';
     }
   }
 
   function toggleTodo(id: string) {
-    const todo = todos.find(t => t.id === id);
-    if (todo) todo.done = !todo.done;
+    appState.toggleTodo(id);
   }
 
   function deleteTodo(id: string) {
-    todos = todos.filter(t => t.id !== id);
+    appState.deleteTodo(id);
   }
 </script>
 
 <div class="todo-widget">
   <div class="header">
     <h3>待办事项</h3>
-    <span class="count">{todos.filter(t => t.done).length}/{todos.length}</span>
+    <span class="count">{appState.todos.filter(t => t.done).length}/{appState.todos.length}</span>
   </div>
   
   <div class="todo-list">
-    {#each todos as todo (todo.id)}
+    {#each appState.todos as todo (todo.id)}
       <div class="todo-item" class:done={todo.done}>
         <button class="checkbox" onclick={() => toggleTodo(todo.id)}>
           {#if todo.done}

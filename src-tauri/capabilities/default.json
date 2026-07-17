@@ -9,6 +9,7 @@
     "core:event:default",
     "autostart:default",
     "process:default",
-    "updater:default"
+    "updater:default",
+    "store:default"
   ]
 }

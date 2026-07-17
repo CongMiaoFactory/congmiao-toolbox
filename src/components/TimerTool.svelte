@@ -1,17 +1,41 @@
 <script lang="ts">
   import { appState } from '../state.svelte';
+  import { onDestroy, onMount } from 'svelte';
 
-  let mode = $state<'stopwatch' | 'countdown'>('stopwatch');
+  let now = $state(Date.now());
+  let interval: number | null = null;
+  const timers = $derived(appState.timers);
+  const mode = $derived(timers.selectedMode);
 
   // ---------- STOPWATCH ----------
-  let swTime = $state(0);
-  let swRunning = $state(false);
-  let swInterval: number;
-  let swLaps = $state<number[]>([]);
+  const swRunning = $derived(timers.stopwatch.running);
+  const swLaps = $derived(timers.stopwatch.laps);
+  const swTime = $derived(timers.stopwatch.elapsedMs + (
+    timers.stopwatch.running && timers.stopwatch.startedAt !== null
+      ? Math.max(0, now - timers.stopwatch.startedAt) : 0
+  ));
 
-  $effect(() => {
-    return () => { if (swInterval) clearInterval(swInterval); };
-  });
+  function tick() {
+    now = Date.now();
+    const countdown = timers.countdown;
+    if (countdown.running && countdown.targetAt !== null) {
+      countdown.remainingMs = Math.max(0, countdown.targetAt - now);
+      if (countdown.remainingMs === 0) {
+        countdown.running = false;
+        countdown.targetAt = null;
+        appState.markTimersChanged();
+      }
+    }
+  }
+
+  function syncTicker() {
+    const running = timers.stopwatch.running || timers.countdown.running;
+    if (running && interval === null) interval = window.setInterval(tick, 50);
+    if (!running && interval !== null) {
+      window.clearInterval(interval);
+      interval = null;
+    }
+  }
 
   const formatSw = (ms: number) => {
     const min = Math.floor(ms / 60000).toString().padStart(2, '0');
@@ -21,75 +45,78 @@
   };
 
   const toggleSw = () => {
-    if (swRunning) {
-      clearInterval(swInterval);
-      swRunning = false;
+    const stopwatch = timers.stopwatch;
+    if (stopwatch.running) {
+      stopwatch.elapsedMs = swTime;
+      stopwatch.running = false;
+      stopwatch.startedAt = null;
     } else {
-      const start = Date.now() - swTime;
-      swInterval = window.setInterval(() => {
-        swTime = Date.now() - start;
-      }, 10);
-      swRunning = true;
+      stopwatch.running = true;
+      stopwatch.startedAt = Date.now();
     }
+    syncTicker();
+    appState.markTimersChanged();
   };
 
   const resetSw = () => {
-    clearInterval(swInterval);
-    swRunning = false;
-    swTime = 0;
-    swLaps = [];
+    Object.assign(timers.stopwatch, { elapsedMs: 0, running: false, startedAt: null, laps: [] });
+    syncTicker();
+    appState.markTimersChanged();
   };
 
   const lapSw = () => {
-    swLaps = [swTime, ...swLaps];
+    timers.stopwatch.laps = [swTime, ...timers.stopwatch.laps].slice(0, 100);
+    appState.markTimersChanged();
   };
 
   const swFormatted = $derived(formatSw(swTime));
 
   // ---------- COUNTDOWN ----------
-  let cdInputMins = $state(5);
-  let cdTime = $state(5 * 60000);
-  let cdTotal = $state(5 * 60000);
-  let cdRunning = $state(false);
-  let cdInterval: number;
-
-  $effect(() => {
-    return () => { if (cdInterval) clearInterval(cdInterval); };
-  });
+  const cdInputMins = $derived(timers.countdown.inputMinutes);
+  const cdTime = $derived(timers.countdown.remainingMs);
+  const cdTotal = $derived(timers.countdown.totalMs);
+  const cdRunning = $derived(timers.countdown.running);
 
   const toggleCd = () => {
-    if (cdRunning) {
-      clearInterval(cdInterval);
-      cdRunning = false;
+    const countdown = timers.countdown;
+    if (countdown.running) {
+      tick();
+      countdown.running = false;
+      countdown.targetAt = null;
     } else {
-      if (cdTime <= 0) {
-        cdTime = cdInputMins * 60000;
-        cdTotal = cdTime;
+      if (countdown.remainingMs <= 0) {
+        countdown.remainingMs = countdown.inputMinutes * 60_000;
+        countdown.totalMs = countdown.remainingMs;
       }
-      const target = Date.now() + cdTime;
-      cdInterval = window.setInterval(() => {
-        cdTime = target - Date.now();
-        if (cdTime <= 0) {
-          cdTime = 0;
-          clearInterval(cdInterval);
-          cdRunning = false;
-        }
-      }, 50);
-      cdRunning = true;
+      countdown.targetAt = Date.now() + countdown.remainingMs;
+      countdown.running = true;
     }
+    syncTicker();
+    appState.markTimersChanged();
   };
 
   const resetCd = () => {
-    clearInterval(cdInterval);
-    cdRunning = false;
-    cdTime = cdInputMins * 60000;
-    cdTotal = cdTime;
+    const countdown = timers.countdown;
+    countdown.running = false;
+    countdown.targetAt = null;
+    countdown.remainingMs = countdown.inputMinutes * 60_000;
+    countdown.totalMs = countdown.remainingMs;
+    syncTicker();
+    appState.markTimersChanged();
   };
 
   const setCdPreset = (mins: number) => {
-    cdInputMins = mins;
+    timers.countdown.inputMinutes = mins;
     resetCd();
   };
+
+  const setMode = (value: 'stopwatch' | 'countdown') => {
+    timers.selectedMode = value;
+    appState.markTimersChanged();
+  };
+
+  onMount(() => { tick(); syncTicker(); });
+  onDestroy(() => { if (interval !== null) window.clearInterval(interval); });
 
   const formatCd = (ms: number) => {
     const min = Math.floor(ms / 60000).toString().padStart(2, '0');
@@ -120,13 +147,13 @@
     <div class="mode-toggle">
       <button 
         class="toggle-btn {mode === 'stopwatch' ? 'active' : ''}" 
-        onclick={() => mode = 'stopwatch'}
+        onclick={() => setMode('stopwatch')}
       >
         <span class="material-symbols-rounded">timer</span>秒表
       </button>
       <button 
         class="toggle-btn {mode === 'countdown' ? 'active' : ''}" 
-        onclick={() => mode = 'countdown'}
+        onclick={() => setMode('countdown')}
       >
         <span class="material-symbols-rounded">hourglass_empty</span>倒计时
       </button>

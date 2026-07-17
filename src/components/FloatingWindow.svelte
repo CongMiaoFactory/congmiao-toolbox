@@ -1,5 +1,8 @@
 <script lang="ts">
-  let { windowId, toolId, title, x, y, width, height, zIndex, onClose, onFocus, children } = $props<{
+  import type { WindowGeometry } from '../workspace';
+  import { onDestroy } from 'svelte';
+
+  let { windowId, toolId, title, x, y, width, height, minWidth, minHeight, isMaximized, zIndex, onClose, onFocus, onMinimize, onMaximize, onGeometryChange, children } = $props<{
     windowId: string;
     toolId: string;
     title: string;
@@ -7,17 +10,20 @@
     y: number;
     width: number;
     height: number;
+    minWidth: number;
+    minHeight: number;
+    isMaximized: boolean;
     zIndex: number;
     onClose: () => void;
     onFocus: () => void;
+    onMinimize: () => void;
+    onMaximize: () => void;
+    onGeometryChange: (geometry: WindowGeometry) => void;
     children?: import('svelte').Snippet;
   }>();
 
   let isDragging = $state(false);
-  let isMaximized = $state(false);
-  
-  // 保存最大化前的位置和大小
-  let savedState = $state({ x: 0, y: 0, w: 0, h: 0 });
+  let isResizing = $state(false);
 
   let startX = $state(0);
   let startY = $state(0);
@@ -26,17 +32,16 @@
   let currentW = $state(0);
   let currentH = $state(0);
 
-  import { onDestroy, onMount } from 'svelte';
-  onMount(() => {
-    currentX = x;
-    currentY = y;
-    currentW = width;
-    currentH = height;
+  $effect(() => {
+    if (isDragging || isResizing) return;
+    currentX = x; currentY = y; currentW = width; currentH = height;
   });
 
   onDestroy(() => {
     window.removeEventListener('pointermove', handlePointerMove);
     window.removeEventListener('pointerup', handlePointerUp);
+    window.removeEventListener('pointermove', handleResizeMove);
+    window.removeEventListener('pointerup', handleResizeUp);
   });
 
   function handlePointerDown(e: PointerEvent) {
@@ -60,45 +65,52 @@
 
   function handlePointerUp() {
     isDragging = false;
+    onGeometryChange({ x: currentX, y: currentY, width: currentW, height: currentH });
     window.removeEventListener('pointermove', handlePointerMove);
     window.removeEventListener('pointerup', handlePointerUp);
   }
 
-  function toggleMaximize() {
-    if (isMaximized) {
-      // 还原
-      isMaximized = false;
-      currentX = savedState.x;
-      currentY = savedState.y;
-      currentW = savedState.w;
-      currentH = savedState.h;
-    } else {
-      // 最大化
-      savedState = { x: currentX, y: currentY, w: currentW, h: currentH };
-      isMaximized = true;
-      currentX = 0;
-      currentY = 0;
-      currentW = window.innerWidth;
-      currentH = window.innerHeight - 80; // 减去底部 Dock 栏的高度
-    }
+  function handleResizeDown(event: PointerEvent) {
+    if (isMaximized) return;
+    event.stopPropagation();
+    isResizing = true;
+    startX = event.clientX;
+    startY = event.clientY;
+    const startWidth = currentW;
+    const startHeight = currentH;
+    const move = (moveEvent: PointerEvent) => {
+      currentW = Math.max(minWidth, startWidth + moveEvent.clientX - startX);
+      currentH = Math.max(minHeight, startHeight + moveEvent.clientY - startY);
+    };
+    handleResizeMove = move;
+    window.addEventListener('pointermove', handleResizeMove);
+    window.addEventListener('pointerup', handleResizeUp);
+  }
+
+  let handleResizeMove = (_event: PointerEvent) => {};
+  function handleResizeUp() {
+    isResizing = false;
+    onGeometryChange({ x: currentX, y: currentY, width: currentW, height: currentH });
+    window.removeEventListener('pointermove', handleResizeMove);
+    window.removeEventListener('pointerup', handleResizeUp);
   }
 </script>
 
 <div 
   class="floating-window" 
   class:maximized={isMaximized}
-  class:dragging={isDragging}
+  class:dragging={isDragging || isResizing}
   style="transform: translate({currentX}px, {currentY}px); width: {currentW}px; height: {currentH}px; z-index: {zIndex};"
   onpointerdown={onFocus}
   role="dialog"
   aria-label={title}
   tabindex="-1"
 >
-  <div class="window-header" onpointerdown={handlePointerDown} ondblclick={toggleMaximize} role="presentation">
+  <div class="window-header" onpointerdown={handlePointerDown} ondblclick={onMaximize} role="presentation">
     <div class="window-controls">
       <button class="mac-btn close" onclick={onClose} aria-label="关闭窗口"></button>
-      <button class="mac-btn minimize" onclick={toggleMaximize} aria-label="最小化窗口"></button>
-      <button class="mac-btn maximize" onclick={toggleMaximize} aria-label="最大化窗口"></button>
+      <button class="mac-btn minimize" onclick={onMinimize} aria-label="最小化窗口"></button>
+      <button class="mac-btn maximize" onclick={onMaximize} aria-label="最大化窗口"></button>
     </div>
     <div class="window-title">{title}</div>
     <div class="window-spacer"></div>
@@ -108,6 +120,7 @@
       {@render children()}
     {/if}
   </div>
+  {#if !isMaximized}<div class="resize-handle" onpointerdown={handleResizeDown} role="presentation"></div>{/if}
 </div>
 
 <style>
@@ -218,6 +231,16 @@
     display: flex;
     flex-direction: column;
     background-color: var(--bg-app);
+  }
+
+  .resize-handle {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 18px;
+    height: 18px;
+    cursor: nwse-resize;
+    z-index: 3;
   }
 
   /* --- 全局覆盖：隐藏工具内置的返回按钮和冗余大标题 --- */

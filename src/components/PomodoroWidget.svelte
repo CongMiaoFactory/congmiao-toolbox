@@ -1,47 +1,67 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
+  import { appState } from '../state.svelte';
 
-  const WORK_TIME = 25 * 60;
-  const BREAK_TIME = 5 * 60;
-
-  let timeLeft = $state(WORK_TIME);
-  let isRunning = $state(false);
-  let isWork = $state(true);
   let intervalId: number | null = null;
 
-  function toggleTimer() {
-    if (isRunning) {
-      if (intervalId) clearInterval(intervalId);
-      isRunning = false;
-    } else {
-      isRunning = true;
-      intervalId = window.setInterval(() => {
-        if (timeLeft > 0) {
-          timeLeft--;
-        } else {
-          // Switch mode
-          isWork = !isWork;
-          timeLeft = isWork ? WORK_TIME : BREAK_TIME;
-          // Could play a sound here
-        }
-      }, 1000);
+  const timer = $derived(appState.timers.pomodoro);
+  const isWork = $derived(timer.mode === 'work');
+  const timeLeft = $derived(timer.remainingSeconds);
+  const isRunning = $derived(timer.running);
+
+  function tick() {
+    if (!timer.running || timer.targetAt === null) return;
+    const now = Date.now();
+    let transitioned = false;
+    while (timer.targetAt <= now) {
+      timer.mode = timer.mode === 'work' ? 'break' : 'work';
+      timer.targetAt += (timer.mode === 'work' ? timer.workSeconds : timer.breakSeconds) * 1000;
+      transitioned = true;
     }
+    timer.remainingSeconds = Math.max(0, Math.ceil((timer.targetAt - now) / 1000));
+    if (transitioned) appState.markTimersChanged();
+  }
+
+  function startTicker() {
+    if (intervalId !== null) window.clearInterval(intervalId);
+    intervalId = window.setInterval(tick, 250);
+  }
+
+  function toggleTimer() {
+    if (timer.running) {
+      tick();
+      timer.running = false;
+      timer.targetAt = null;
+      if (intervalId !== null) window.clearInterval(intervalId);
+      intervalId = null;
+    } else {
+      timer.running = true;
+      timer.targetAt = Date.now() + timer.remainingSeconds * 1000;
+      startTicker();
+    }
+    appState.markTimersChanged();
   }
 
   function resetTimer() {
-    if (intervalId) clearInterval(intervalId);
-    isRunning = false;
-    timeLeft = isWork ? WORK_TIME : BREAK_TIME;
+    if (intervalId !== null) window.clearInterval(intervalId);
+    intervalId = null;
+    timer.running = false;
+    timer.targetAt = null;
+    timer.remainingSeconds = timer.mode === 'work' ? timer.workSeconds : timer.breakSeconds;
+    appState.markTimersChanged();
   }
 
   function switchMode(mode: 'work' | 'break') {
-    isWork = mode === 'work';
+    timer.mode = mode;
     resetTimer();
   }
 
+  onMount(() => { if (timer.running) startTicker(); });
+  onDestroy(() => { if (intervalId !== null) window.clearInterval(intervalId); });
+
   let minutes = $derived(Math.floor(timeLeft / 60).toString().padStart(2, '0'));
   let seconds = $derived((timeLeft % 60).toString().padStart(2, '0'));
-  let progress = $derived(100 - (timeLeft / (isWork ? WORK_TIME : BREAK_TIME)) * 100);
+  let progress = $derived(100 - (timeLeft / (isWork ? timer.workSeconds : timer.breakSeconds)) * 100);
 </script>
 
 <div class="pomodoro-widget" class:break-mode={!isWork}>

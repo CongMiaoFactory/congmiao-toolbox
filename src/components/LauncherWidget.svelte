@@ -1,27 +1,20 @@
 <script lang="ts">
-  import { appState, type ToolId } from '../state.svelte';
-  
-  const launcherTools: Array<{
-    id: ToolId;
-    title: string;
-    icon: string;
-    accent: 'teal' | 'blue';
-  }> = [
-    { id: 'timestamp', title: '生产力时钟', icon: 'timer', accent: 'teal' },
-    { id: 'json-format', title: 'JSON 格式化', icon: 'data_object', accent: 'teal' },
-    { id: 'color', title: '深层取色器', icon: 'colorize', accent: 'blue' },
-    { id: 'translator', title: '多语互译机', icon: 'translate', accent: 'teal' },
-    { id: 'image', title: '图片格式工厂', icon: 'imagesmode', accent: 'blue' },
-  ];
+  import { appState } from '../state.svelte';
+  import { windowTools, type WindowToolId } from '../toolRegistry';
 
-  function launchTool(id: ToolId) {
+  const launcherTools = windowTools.filter((tool) => tool.showInDock);
+  const extraOpenTools = $derived(windowTools.filter((tool) =>
+    !tool.showInDock && appState.windows.some((window) => window.toolId === tool.id)
+  ));
+
+  function launchTool(id: WindowToolId) {
     appState.openFloatingWindow(id);
   }
 </script>
 
 <div class="launcher-widget">
   {#each launcherTools as tool}
-    <button class="launcher-btn {tool.accent}" onclick={() => launchTool(tool.id)} title={tool.title}>
+    <button class="launcher-btn {tool.accent}" class:running={appState.windows.some((window) => window.toolId === tool.id)} onclick={() => launchTool(tool.id)} title={tool.title}>
       <span class="material-symbols-rounded">{tool.icon}</span>
     </button>
   {/each}
@@ -30,6 +23,14 @@
   </button>
   
   <div class="divider"></div>
+
+  {#each extraOpenTools as tool (tool.id)}
+    <button class="launcher-btn {tool.accent} running" onclick={() => launchTool(tool.id)} title={tool.title}>
+      <span class="material-symbols-rounded">{tool.icon}</span>
+    </button>
+  {/each}
+
+  {#if extraOpenTools.length}<div class="divider"></div>{/if}
 
   <button class="launcher-btn gray" onclick={() => appState.settingsOpen = true} title="系统设置">
     <span class="material-symbols-rounded">settings</span>
@@ -66,10 +67,21 @@
     cursor: pointer;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     background: transparent;
+    position: relative;
   }
 
   .launcher-btn:hover {
     transform: translateY(-4px) scale(1.05);
+  }
+
+  .launcher-btn.running::after {
+    content: '';
+    position: absolute;
+    bottom: 2px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
   }
 
   .launcher-btn .material-symbols-rounded {
