@@ -124,10 +124,10 @@ class _CommandPaletteDialogState extends State<CommandPaletteDialog> {
                             selected: selected,
                             selectedTileColor:
                                 theme.colorScheme.primaryContainer
-                                    .withOpacity(0.35),
+                                    .withValues(alpha: 0.35),
                             leading: CircleAvatar(
                               radius: 14,
-                              backgroundColor: accent.withOpacity(0.18),
+                              backgroundColor: accent.withValues(alpha: 0.18),
                               child:
                                   Icon(result.icon, size: 16, color: accent),
                             ),

@@ -81,7 +81,7 @@ class _ToolCard extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 16,
-                    backgroundColor: accent.withOpacity(0.16),
+                    backgroundColor: accent.withValues(alpha: 0.16),
                     child: Icon(tool.icon, size: 18, color: accent),
                   ),
                   const Spacer(),

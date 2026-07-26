@@ -40,7 +40,7 @@ class PlaceholderTool extends StatelessWidget {
               const SizedBox(height: 16),
               Card(
                 color: theme.colorScheme.surfaceContainerHighest
-                    .withOpacity(0.5),
+                    .withValues(alpha: 0.5),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Row(

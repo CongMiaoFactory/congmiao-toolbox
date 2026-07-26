@@ -94,7 +94,7 @@ class _HomeShellState extends State<HomeShell> {
     return Container(
       height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      color: theme.colorScheme.surface.withOpacity(0.72),
+      color: theme.colorScheme.surface.withValues(alpha: 0.72),
       child: Row(
         children: [
           IconButton(
@@ -105,7 +105,14 @@ class _HomeShellState extends State<HomeShell> {
           const SizedBox(width: 4),
           Text('Congmiao Toolbox', style: theme.textTheme.titleMedium),
           const SizedBox(width: 12),
-          Text(nav.caption, style: theme.textTheme.bodySmall),
+          Flexible(
+            child: Text(
+              nav.caption,
+              style: theme.textTheme.bodySmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           const Spacer(),
           OutlinedButton.icon(
             icon: const Icon(Icons.search, size: 16),
@@ -180,7 +187,7 @@ class _HomeShellState extends State<HomeShell> {
     return Container(
       height: 44,
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      color: theme.colorScheme.surface.withOpacity(0.72),
+      color: theme.colorScheme.surface.withValues(alpha: 0.72),
       child: Row(
         children: [
           Expanded(
@@ -264,7 +271,7 @@ class _HomeShellState extends State<HomeShell> {
                               backgroundColor: Theme.of(context)
                                   .colorScheme
                                   .surface
-                                  .withOpacity(0.6),
+                                  .withValues(alpha: 0.6),
                               selectedIndex: appState.activeNavIndex,
                               onDestinationSelected:
                                   appState.setActiveNavIndex,

@@ -231,7 +231,7 @@ class _WheelPainter extends CustomPainter {
     if (radius <= 0) return;
 
     if (options.length < 2) {
-      final paint = Paint()..color = palette.first.withOpacity(0.2);
+      final paint = Paint()..color = palette.first.withValues(alpha: 0.2);
       canvas.drawCircle(center, radius, paint);
       return;
     }
@@ -272,7 +272,7 @@ class _WheelPainter extends CustomPainter {
 
     // Hub and top pointer.
     canvas.drawCircle(center, radius * 0.12,
-        Paint()..color = Colors.white.withOpacity(0.9));
+        Paint()..color = Colors.white.withValues(alpha: 0.9));
     final pointer = Path()
       ..moveTo(center.dx, center.dy - radius - 2)
       ..lineTo(center.dx - 10, center.dy - radius + 18)

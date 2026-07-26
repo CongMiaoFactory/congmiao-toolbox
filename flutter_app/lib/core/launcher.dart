@@ -213,7 +213,7 @@ List<LauncherResult> buildLauncherResults(
       LauncherResult(
         id: 'timer:$timerSeconds',
         kind: LauncherResultKind.timer,
-        title: '启动 ${label}倒计时',
+        title: '启动 $label倒计时',
         description: '打开生产力时钟并立即开始倒计时',
         icon: Icons.timer,
         accent: ToolAccent.red,

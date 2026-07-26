@@ -5,7 +5,6 @@ build/
 .flutter-plugins
 .flutter-plugins-dependencies
 .metadata
-pubspec.lock
 
 # Generated platform shells (regenerate with `flutter create .`, see README)
 android/

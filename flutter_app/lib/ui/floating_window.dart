@@ -66,7 +66,7 @@ class FloatingWindowFrame extends StatelessWidget {
           elevation: isActive ? 18 : 8,
           borderRadius: BorderRadius.circular(14),
           clipBehavior: Clip.antiAlias,
-          color: theme.colorScheme.surface.withOpacity(0.97),
+          color: theme.colorScheme.surface.withValues(alpha: 0.97),
           child: Column(
             children: [
               GestureDetector(
@@ -79,12 +79,12 @@ class FloatingWindowFrame extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest
-                        .withOpacity(isActive ? 0.9 : 0.6),
+                        .withValues(alpha: isActive ? 0.9 : 0.6),
                     border: Border(
                       bottom: BorderSide(
                         color: isActive
-                            ? accent.withOpacity(0.5)
-                            : theme.dividerColor.withOpacity(0.4),
+                            ? accent.withValues(alpha: 0.5)
+                            : theme.dividerColor.withValues(alpha: 0.4),
                       ),
                     ),
                   ),
