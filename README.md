@@ -2,6 +2,10 @@
 
 Congmiao Toolbox is a local desktop toolbox built with Tauri 2, Svelte 5, and Bun.
 
+> **flutter 分支说明**：本分支包含 Flutter 版移植，位于 [`flutter_app/`](flutter_app/README.md)；
+> 原 Tauri/Svelte 代码保持不动作为对照参考。架构分析与移植映射见
+> [`docs/flutter-port.md`](docs/flutter-port.md)。
+
 ## Features
 
 - Desktop utility hub with multiple local tools in a single window
