@@ -77,7 +77,6 @@ const toolRegistry = <ToolDefinition>[
     keywords: ['python', 'ruff', 'format'],
     defaultSize: ToolWindowSize(),
     showInLaunchpad: true,
-    ported: false,
   ),
   ToolDefinition(
     id: 'encoder',
@@ -124,7 +123,6 @@ const toolRegistry = <ToolDefinition>[
     defaultSize: ToolWindowSize(),
     showInLaunchpad: true,
     showInDock: true,
-    ported: false,
   ),
   ToolDefinition(
     id: 'timer',
@@ -150,7 +148,6 @@ const toolRegistry = <ToolDefinition>[
     defaultSize: ToolWindowSize(),
     showInLaunchpad: true,
     showInDock: true,
-    ported: false,
   ),
   ToolDefinition(
     id: 'peek_pc',
@@ -162,7 +159,6 @@ const toolRegistry = <ToolDefinition>[
     keywords: ['peek', 'remote', 'monitor', '监视'],
     defaultSize: ToolWindowSize(width: 980, height: 700, minWidth: 680, minHeight: 500),
     showInLaunchpad: true,
-    ported: false,
   ),
   ToolDefinition(
     id: 'lucky-wheel',

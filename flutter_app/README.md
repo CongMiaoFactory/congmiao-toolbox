@@ -27,35 +27,40 @@ flutter analyze
 flutter test
 ```
 
-`test/` 下的用例逐条移植自主分支的 `launcher.test.ts` 与 `workspace.test.ts`，
-确保启动器打分、安全计算器、计时器恢复、窗口几何钳制等行为与原版一致。
+`test/` 下的用例移植自主分支的 `launcher.test.ts`、`workspace.test.ts` 与
+`file_tools.rs` / `security.rs` 的 Rust 测试，另含 Peek 服务器的真实 HTTP
+端到端测试，确保移植语义与原版一致。
 
-## 已移植功能
+## 功能状态（迁移已完成）
 
-- 桌面隐喻主界面：壁纸（URL + 模糊）、顶栏、侧栏导航、底部 Dock
-- 应用内浮动工具窗口：拖拽、缩放、最小化、最大化、层级管理，布局持久化恢复
-- 快速启动器（Ctrl+K）：模糊搜索、收藏/最近加权、`> timer 10m`、`> todo …`、
-  `> workspace`、`> peek`、无 eval 安全计算器、URL 识别与网页搜索
-- 工具窗口：JSON 格式化、万能编码转换（Base64/URL/Unicode）、哈希校验中心
-  （MD5/SHA-1/SHA-256/SHA-512）、深层取色器（HEX/RGB/HSL）、生产力时钟
-  （秒表 + 计圈 + 倒计时）、幸运大转盘
-- 安全文件工具三件套（`dart:io`，与 Rust 版同一套不变量）：批量重命名
-  （6 种规则链 + 两阶段执行支持互换）、规则整理（类型/日期/大小 + 自定义
-  扩展名映射）、重复文件扫描（大小 → 抽样哈希 → 全量哈希，只读报告，可取消）；
-  全部先预览后执行，共享原子操作日志，最近 10 次操作可撤销
-- 剪贴板快捷动作：复制时间戳、格式化剪贴板 JSON、URL Encode、Base64、SHA-256
-- 桌面小组件：时钟、待办、番茄钟、最近操作流
-- 工作区持久化：schema 与主分支 `workspace.json` v1 相同，含计时器跨重启恢复
-  （`reconcileTimers`）、工作区模板保存/应用、损坏存档自动备份
+18 个注册工具全部可用：
 
-## 待移植（原版依赖 Rust 后端）
+- **桌面壳**：壁纸（URL + 模糊）、顶栏、侧栏、Dock、浮动工具窗口（拖拽/缩放/
+  最大化，布局持久化恢复）、Ctrl+K 快速启动器（模糊搜索、`> timer` / `> todo` /
+  `> workspace` / `> peek` 命令、无 eval 计算器、URL/网页搜索）
+- **纯逻辑工具**：JSON 格式化、编码转换（Base64/URL/Unicode）、哈希校验
+  （MD5/SHA-1/256/512）、取色器（HEX/RGB/HSL）、生产力时钟（秒表+计圈+倒计时）、
+  幸运大转盘、5 个剪贴板快捷动作
+- **文件工具三件套**（`dart:io`，与 Rust 版同一套安全不变量）：批量重命名、
+  规则整理、重复扫描；先预览后执行 + 原子操作日志 + 撤销
+- **Peek 远程监视**：`dart:io` HttpServer 复刻——64 位高熵 API 密钥（仅存哈希、
+  恒定时间比较）、失败限流（60 秒 10 次）、防抖连接日志（500 条 / 30 天）、
+  监听范围与端口配置、手机浏览器仪表盘（/api/status 提供 CPU/内存/前台窗口）
+- **系统监控**：仪表盘 CPU/内存磁贴（Windows: PowerShell CIM；Linux: /proc；
+  macOS: top）
+- **屏幕使用时长**：win32 FFI 前台窗口每秒采样，持久化到 `app_usage.json`
+  （与 Rust 版同名同构；打开页面或启动 Peek 服务后开始统计）
+- **图片格式工厂**：package:image 离线解码 PNG/JPG/WebP/GIF/BMP，输出 PNG/JPG
+- **Python 工具集**：字典 → JSON（内置 Python 字面量解析器）+ 本机 ruff 排版
+- **多语互译机**：与原版相同的免费 Google 翻译端点（需联网）
 
-| 功能 | 原版实现 | Flutter 计划 |
-| --- | --- | --- |
-| Peek PC 局域网监视 | `src-tauri/src/peek_server` | `dart:io` HttpServer 复刻鉴权/限流/日志 |
-| 屏幕使用时长 | `usage_tracker.rs` | 各平台 MethodChannel |
-| 系统监控（CPU/内存） | `sysinfo` | MethodChannel 或 FFI |
-| 心率 BLE + 悬浮窗 | `heartrate.rs` (btleplug) | `flutter_blue_plus` + 独立窗口 |
-| 媒体控制 | `media_module.rs` (Windows SMTC) | MethodChannel |
-| Python 排版 / 图片转换 / 翻译 | ruff-wasm / Canvas / 在线接口 | 本机进程 / `package:image` / 待定 |
-| 系统托盘、全局快捷键、开机自启、更新器 | Tauri 插件 | `tray_manager`、`hotkey_manager`、`launch_at_startup` 等 |
+## 已知平台限制（与原版差异）
+
+| 能力 | 说明 |
+| --- | --- |
+| Peek 手机端截图 | 需要原生屏幕捕获，接口返回 501，仪表盘显示占位提示 |
+| 屏幕时长 / 前台窗口 | 依赖 win32 FFI，仅 Windows；其余平台显示说明 |
+| 媒体控制（SMTC） | 需要 WinRT 平台通道，未移植；状态接口 media 字段为 null |
+| 心率 BLE 悬浮窗 | 需要 BLE 插件与多窗口支持，未移植 |
+| 系统托盘 / 全局快捷键 / 开机自启 / 更新器 | 桌面集成插件（tray_manager 等）列为后续增强 |
+| WebP 输出 | 纯 Dart 尚无 WebP 编码器，仅支持读取 |

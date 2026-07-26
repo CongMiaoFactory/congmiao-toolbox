@@ -69,16 +69,24 @@
 - 幸运大转盘先实现单层转盘 + 历史记录；原版多级决策树列入后续
 - 番茄钟/倒计时结束暂以活动流提示，系统通知待接 `flutter_local_notifications`
 
-### 2.3 后续路线（按优先级）
+### 2.3 迁移状态
 
-1. ~~文件工具三件套~~ ✅ 已完成（`lib/core/file_tools.dart` + 三个工具窗口 + 测试）
-2. **Peek PC**：`dart:io` HttpServer 复刻 `peek_server` 的鉴权、限流、日志与移动端
-   仪表盘（纯 Dart 可行，无需平台通道；截图与前台应用检测需要通道或 FFI）
-3. **平台通道**：系统监控（sysinfo 等价）、屏幕使用时长、媒体控制
-4. **桌面集成**：托盘（tray_manager）、全局快捷键（hotkey_manager）、
-   开机自启（launch_at_startup）、多窗口 HR 悬浮窗（desktop_multi_window）
-5. **心率 BLE**：`flutter_blue_plus`（同时打开移动端使用场景）
-6. 图片转换（`package:image`）、Python 排版（本机 ruff 进程）、翻译（接口待定）
+工具层迁移已完成——18 个注册工具全部有真实实现：
+
+1. ✅ 文件工具三件套（`lib/core/file_tools.dart` + 三个工具窗口 + 测试）
+2. ✅ Peek PC（`lib/core/peek_security.dart` + `peek_server.dart`：dart:io
+   HttpServer、哈希密钥 + 恒定时间比较、失败限流、防抖日志、v1 迁移、
+   移动端仪表盘；含真实 HTTP 端到端测试）
+3. ✅ 系统监控（`lib/core/system_stats.dart`：PowerShell CIM / /proc / top）
+4. ✅ 屏幕使用时长（`lib/core/usage_tracker.dart`：win32 FFI 前台窗口采样，
+   Windows-only，其余平台显示说明）
+5. ✅ 图片转换（package:image）、Python 字典转换（内置字面量解析器）+
+   本机 ruff、翻译（原版同款免费 Google 端点）
+
+**剩余为桌面/系统集成增强**（非工具功能，列为后续里程碑）：
+Peek 手机端截图（原生屏幕捕获）、媒体控制（WinRT SMTC 通道）、心率 BLE 悬浮窗、
+系统托盘 / 全局快捷键 / 开机自启 / 更新器（tray_manager、hotkey_manager、
+launch_at_startup、桌面多窗口）。
 
 ## 3. 分支使用方式
 
