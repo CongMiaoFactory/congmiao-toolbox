@@ -3,9 +3,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import 'ids.dart';
 import 'persistence.dart';
 import 'tool_registry.dart';
 import 'workspace.dart';
+
+export 'ids.dart' show generateId;
 
 /// Port of `src/state.svelte.ts`. Svelte runes become a [ChangeNotifier];
 /// every mutating method ends with [notifyListeners] plus the same
@@ -64,18 +67,6 @@ class WindowData {
   bool isMinimized;
   bool isMaximized;
   WindowGeometry? restoreGeometry;
-}
-
-final _random = math.Random.secure();
-
-String generateId() {
-  final bytes = List<int>.generate(16, (_) => _random.nextInt(256));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  final hex =
-      bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
-  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
-      '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
 }
 
 String formatMeta([DateTime? at]) {

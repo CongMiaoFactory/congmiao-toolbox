@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../core/app_state.dart';
+import 'batch_rename_tool.dart';
 import 'color_tool.dart';
+import 'duplicate_scanner_tool.dart';
 import 'encoder_tool.dart';
+import 'file_organizer_tool.dart';
 import 'hash_tool.dart';
 import 'json_tool.dart';
 import 'lucky_wheel_tool.dart';
@@ -41,19 +44,7 @@ final Map<String, Widget Function(AppState appState)> windowToolBuilders = {
             'Flutter 版计划用 dart:io HttpServer 复刻同一套接口与移动端仪表盘，'
             '是后端移植中优先级最高的一项。',
       ),
-  'batch-rename': (appState) => const PlaceholderTool(
-        toolId: 'batch-rename',
-        note: '原版由 Rust (file_tools.rs) 提供预览、执行与撤销。'
-            'Flutter 版计划用 dart:io 复刻同样的“先预览后执行 + 操作历史撤销”流程。',
-      ),
-  'sort-rule': (appState) => const PlaceholderTool(
-        toolId: 'sort-rule',
-        note: '原版由 Rust (file_tools.rs) 按类型/日期/大小生成安全整理计划。'
-            '与批量重命名共用同一套 dart:io 执行/撤销框架，列入文件工具里程碑。',
-      ),
-  'duplicate-scan': (appState) => const PlaceholderTool(
-        toolId: 'duplicate-scan',
-        note: '原版由 Rust (file_tools.rs) 分阶段哈希（大小 → 头部 → 全量）生成只读报告。'
-            'Flutter 版计划用 Isolate + crypto 实现同样的分阶段扫描。',
-      ),
+  'batch-rename': (appState) => BatchRenameTool(appState: appState),
+  'sort-rule': (appState) => FileOrganizerTool(appState: appState),
+  'duplicate-scan': (appState) => DuplicateScannerTool(appState: appState),
 };

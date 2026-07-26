@@ -54,6 +54,7 @@
 | `state.svelte.ts` | `lib/core/app_state.dart` | Svelte runes → `ChangeNotifier`；同样的 250ms 防抖持久化与持久化队列 |
 | `persistence.ts` + store 插件 | `lib/core/persistence.dart` | `shared_preferences` 存单键 JSON；损坏时备份到 `congmiao.workspace.corrupt.<ts>` |
 | `tools.ts` | `lib/tools/actions.dart` | 剪贴板动作与 `runTool` 分发 |
+| `file_tools.rs` | `lib/core/file_tools.dart` | 纯 `dart:io` 复刻：预览计划缓存（10 分钟 TTL）、执行前源文件校验、两阶段重命名（支持 a↔b 互换）、跨磁盘 safe move、原子撤销日志（tmp/bak 轮换，上限 10 条）、大小 → 抽样哈希 → 全量哈希的重复扫描（可取消，带进度回调；BLAKE3 换为 SHA-256，哈希仅内部使用不落盘） |
 | `FloatingWindow.svelte` | `lib/ui/floating_window.dart` | Stack + Positioned + Pan 手势实现拖拽/缩放 |
 | `CommandPalette.svelte` | `lib/ui/command_palette.dart` | Dialog + CallbackShortcuts 上下键导航 |
 | `App.svelte` 桌面模式 | `lib/ui/home_shell.dart` | 壁纸/顶栏/NavigationRail/桌面层/Dock/全局快捷键 |
@@ -70,9 +71,9 @@
 
 ### 2.3 后续路线（按优先级）
 
-1. **Peek PC**：`dart:io` HttpServer 复刻 `peek_server` 的鉴权、限流、日志与移动端
+1. ~~文件工具三件套~~ ✅ 已完成（`lib/core/file_tools.dart` + 三个工具窗口 + 测试）
+2. **Peek PC**：`dart:io` HttpServer 复刻 `peek_server` 的鉴权、限流、日志与移动端
    仪表盘（纯 Dart 可行，无需平台通道；截图与前台应用检测需要通道或 FFI）
-2. **文件工具三件套**：`dart:io` + Isolate，保留预览/执行/撤销与分阶段哈希
 3. **平台通道**：系统监控（sysinfo 等价）、屏幕使用时长、媒体控制
 4. **桌面集成**：托盘（tray_manager）、全局快捷键（hotkey_manager）、
    开机自启（launch_at_startup）、多窗口 HR 悬浮窗（desktop_multi_window）

@@ -39,6 +39,10 @@ flutter test
 - 工具窗口：JSON 格式化、万能编码转换（Base64/URL/Unicode）、哈希校验中心
   （MD5/SHA-1/SHA-256/SHA-512）、深层取色器（HEX/RGB/HSL）、生产力时钟
   （秒表 + 计圈 + 倒计时）、幸运大转盘
+- 安全文件工具三件套（`dart:io`，与 Rust 版同一套不变量）：批量重命名
+  （6 种规则链 + 两阶段执行支持互换）、规则整理（类型/日期/大小 + 自定义
+  扩展名映射）、重复文件扫描（大小 → 抽样哈希 → 全量哈希，只读报告，可取消）；
+  全部先预览后执行，共享原子操作日志，最近 10 次操作可撤销
 - 剪贴板快捷动作：复制时间戳、格式化剪贴板 JSON、URL Encode、Base64、SHA-256
 - 桌面小组件：时钟、待办、番茄钟、最近操作流
 - 工作区持久化：schema 与主分支 `workspace.json` v1 相同，含计时器跨重启恢复
@@ -52,7 +56,6 @@ flutter test
 | 屏幕使用时长 | `usage_tracker.rs` | 各平台 MethodChannel |
 | 系统监控（CPU/内存） | `sysinfo` | MethodChannel 或 FFI |
 | 心率 BLE + 悬浮窗 | `heartrate.rs` (btleplug) | `flutter_blue_plus` + 独立窗口 |
-| 文件工具三件套 | `file_tools.rs` | `dart:io` + Isolate，保留预览/撤销流程 |
 | 媒体控制 | `media_module.rs` (Windows SMTC) | MethodChannel |
 | Python 排版 / 图片转换 / 翻译 | ruff-wasm / Canvas / 在线接口 | 本机进程 / `package:image` / 待定 |
 | 系统托盘、全局快捷键、开机自启、更新器 | Tauri 插件 | `tray_manager`、`hotkey_manager`、`launch_at_startup` 等 |

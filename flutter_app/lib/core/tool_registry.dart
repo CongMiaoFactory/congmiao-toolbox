@@ -234,7 +234,6 @@ const toolRegistry = <ToolDefinition>[
     keywords: ['rename', 'file', 'batch', '重命名'],
     defaultSize: ToolWindowSize(width: 1100, height: 740, minWidth: 760, minHeight: 540),
     showInLaunchpad: true,
-    ported: false,
   ),
   ToolDefinition(
     id: 'sort-rule',
@@ -246,7 +245,6 @@ const toolRegistry = <ToolDefinition>[
     keywords: ['sort', 'rule', 'file', '整理'],
     defaultSize: ToolWindowSize(width: 1100, height: 740, minWidth: 760, minHeight: 540),
     showInLaunchpad: true,
-    ported: false,
   ),
   ToolDefinition(
     id: 'duplicate-scan',
@@ -258,7 +256,6 @@ const toolRegistry = <ToolDefinition>[
     keywords: ['duplicate', 'scan', 'file', '重复'],
     defaultSize: ToolWindowSize(width: 1050, height: 720, minWidth: 720, minHeight: 520),
     showInLaunchpad: true,
-    ported: false,
   ),
 ];
 
